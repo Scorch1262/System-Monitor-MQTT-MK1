@@ -195,3 +195,7 @@ input[type=checkbox] { accent-color: var(--amber); width: 15px; height: 15px; }
 
 body.linux .win-only { display: none !important; }
 body:not(.linux) .linux-only { display: none !important; }
+
+.banner.teal { border-color: rgba(45, 212, 191, 0.4); background: var(--teal-dim); }
+.banner.teal b { color: var(--teal); }
+.version.new { color: var(--teal); border-color: rgba(45, 212, 191, 0.5); cursor: pointer; }

@@ -29,11 +29,12 @@
     <span class="pill" id="pill-mqtt" title="MQTT-Verbindung"><i></i><span>MQTT</span></span>
     <span class="pill" id="pill-hw" title="Hardware-Sensoren"><i></i><span>SENSOREN</span></span>
     <span class="pill" id="pill-admin" title="Adminrechte"><i></i><span>ADMIN</span></span>
-    <span class="version" id="version">v–</span>
+    <span class="version" id="version" title="Installierte Version">v–</span>
   </div>
 </header>
 
 <main>
+  <div id="update-banner" class="banner teal hidden"></div>
   <div id="banner" class="banner hidden"></div>
 
   <!-- ===================== ÜBERSICHT ===================== -->
@@ -211,6 +212,26 @@
           <button class="btn" id="btn-all">Alle</button>
           <button class="btn" id="btn-none">Keine</button>
           <button class="btn primary" data-save>Speichern</button>
+        </div>
+      </div>
+
+      <div class="tile">
+        <div class="tile-head"><span class="tile-title">UPDATE</span><span class="tile-sub" id="u-repo">–</span></div>
+        <div class="kv">
+          <span class="k">Installiert</span><span class="v" id="u-current">–</span>
+          <span class="k">Neueste Version</span><span class="v" id="u-latest">–</span>
+          <span class="k">Veröffentlicht</span><span class="v" id="u-date">–</span>
+          <span class="k">Zuletzt geprüft</span><span class="v" id="u-checked">–</span>
+          <span class="k">Art</span><span class="v" id="u-mode">–</span>
+        </div>
+        <div class="msg" id="u-msg" style="margin-top:8px"></div>
+        <div class="preview hidden" id="u-notes" style="margin-top:8px;white-space:pre-wrap;max-height:180px"></div>
+        <div class="form" style="margin-top:10px">
+          <label>Automatisch</label><label class="check"><input type="checkbox" id="u-auto">alle 6 Stunden nach Updates suchen</label>
+        </div>
+        <div class="actions">
+          <button class="btn" id="btn-ucheck">Nach Updates suchen</button>
+          <button class="btn primary" id="btn-uinstall" disabled>Jetzt aktualisieren</button>
         </div>
       </div>
 

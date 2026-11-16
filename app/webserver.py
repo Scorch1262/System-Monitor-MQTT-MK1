@@ -38,8 +38,10 @@ class Api:
             }
         if path == "/api/state":
             snap, raw = c.hub.get()
+            up = c.updater.status()
             return 200, {"snapshot": snap, "history": c.hub.get_history(), "sensors": c.hub.status(),
-                         "mqtt": c.publisher.status(), "version": VERSION, "raw_count": len(raw)}
+                         "mqtt": c.publisher.status(), "version": VERSION, "raw_count": len(raw),
+                         "update": {k: up[k] for k in ("latest", "available", "busy", "progress", "error")}}
         if path == "/api/sensors":
             return 200, c.hub.get()[1]
         if path == "/api/preview":
@@ -48,6 +50,8 @@ class Api:
             return 200, {"base": base, "messages": msgs[:400], "total": len(msgs)}
         if path == "/api/config":
             return 200, c.config.get()
+        if path == "/api/update":
+            return 200, c.updater.status()
         if path == "/api/autostart":
             try:
                 return 200, autostart.status()
@@ -83,6 +87,11 @@ class Api:
                 return 200, dict(ok=True, **autostart.set_mode(data.get("mode", "off")))
             except Exception as e:
                 return 400, {"ok": False, "error": str(e)}
+        if path == "/api/update/check":
+            return 200, c.updater.check()
+        if path == "/api/update/install":
+            ok, msg = c.updater.install()
+            return 200, {"ok": ok, "message": msg}
         if path == "/api/restart_admin":
             ok, msg = c.restart_as_admin(delayed=True)
             return 200, {"ok": ok, "message": msg}

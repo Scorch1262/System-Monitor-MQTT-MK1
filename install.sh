@@ -65,6 +65,11 @@ if ! py_ok; then
     fi
 fi
 py_ok || fail "Python 3 ist unvollständig"
+# Stammzertifikate für die Update-Funktion (HTTPS zu GitHub)
+if [ $SYS = openwrt ] && [ ! -s /etc/ssl/certs/ca-certificates.crt ]; then
+    say "Installiere ca-bundle (für Updates über GitHub) ..."
+    opkg update >/dev/null 2>&1; opkg install ca-bundle >/dev/null 2>&1 || say "Hinweis: ca-bundle nicht installiert"
+fi
 PY=$(command -v python3)
 say "Python: $($PY --version 2>&1)"
 

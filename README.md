@@ -1,6 +1,6 @@
 # System-Monitor-MQTT-MK1
 
-**Version 1.1.2**
+**Version 1.2.0**
 
 Kleines Programm, das im Hintergrund läuft und die Systemauslastung regelmäßig an einen
 MQTT-Broker sendet. Eingestellt wird alles über eine Webseite im Dashboard-Design
@@ -80,9 +80,9 @@ Update: `git pull` im geklonten Ordner und `install.sh` erneut ausführen.
 **Variante C – offline per Zip** (Release-Datei `…-linux.zip` oder Repo-Zip; Brume 2: scp nur mit `-O`):
 
 ```
-scp -O System-Monitor-MQTT-MK1-v1.1.2-linux.zip root@192.168.8.1:/root/
+scp -O System-Monitor-MQTT-MK1-v1.2.0-linux.zip root@192.168.8.1:/root/
 ssh root@192.168.8.1
-cd /root && unzip -o System-Monitor-MQTT-MK1-v1.1.2-linux.zip
+cd /root && unzip -o System-Monitor-MQTT-MK1-v1.2.0-linux.zip
 sh System-Monitor-MQTT-MK1/install.sh
 ```
 
@@ -132,6 +132,23 @@ Bei Notebooks liefert nicht jeder Hersteller Lüfterdrehzahlen an Windows.
 | Normal | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` | ohne CPU-Temperatur/Lüfter |
 | Adminrechte | Aufgabenplanung „System-Monitor-MQTT-MK1“, höchste Rechte, läuft auch im Akkubetrieb | alle |
 
+## Update per Knopfdruck
+
+Das Programm prüft alle 6 Stunden (abschaltbar) das neueste Release in
+<https://github.com/Scorch1262/System-Monitor-MQTT-MK1/releases>. Ist eine neuere Version da,
+erscheint oben auf der Übersicht ein Hinweis mit **„Jetzt aktualisieren“** (zusätzlich unter
+*Einstellungen → Update* mit den Release-Notizen und unter Windows im Tray-Menü).
+
+| System | Ablauf |
+|---|---|
+| Windows (exe) | lädt `…-windows.zip` aus dem Release, benennt die laufende exe in `.old` um, legt die neue exe an ihre Stelle, startet sie und beendet sich; die `.old` wird danach gelöscht. Autostart und Einstellungen bleiben unverändert. |
+| Linux (Brume 2, Raspberry) | lädt den Quellcode des Release-Tags, ersetzt `app/`, `web/`, `assets/`, `main.py`, `install.sh`, `uninstall.sh` und startet sich neu. Die JSON-Einstellungen bleiben erhalten. |
+
+Voraussetzung: ein **Release** mit höherer Versionsnummer – der Workflow erstellt es automatisch,
+sobald `VERSION` in `app/version.py` erhöht wurde. Liegt die exe in einem Ordner ohne
+Schreibrecht (z. B. `C:\Programme`), das Programm für das Update als Administrator starten.
+Unter OpenWrt braucht HTTPS die Stammzertifikate (`ca-bundle`, installiert `install.sh` mit).
+
 ## Dateien neben der exe
 
 | Datei | Zweck |
@@ -173,6 +190,7 @@ app/mqtt_client.py       eigener MQTT-3.1.1-Client (Standardbibliothek)
 app/mqtt_pub.py          MQTT-Versand, Nachrichtenaufbau, Wiederverbinden
 app/webserver.py         Webserver + API (http.server)
 app/autostart.py         Registry / Aufgabenplanung / Linux-Dienststatus
+app/updater.py           Update über GitHub-Releases
 install.sh, uninstall.sh Linux-Installation (procd bzw. systemd)
 web/                     Oberfläche (HTML/CSS/JS)
 lhm/LhmDeps.csproj       holt LibreHardwareMonitorLib + Abhängigkeiten
@@ -180,6 +198,11 @@ System-Monitor-MQTT-MK1.spec   PyInstaller-Spezifikation
 ```
 
 ## Änderungen
+
+### 1.2.0
+- Update-Funktion: neues Release im GitHub-Repo erkennen und per Knopfdruck installieren (Windows: exe-Tausch, Linux: Programmdateien ersetzen), automatischer Neustart
+- Update-Hinweis auf der Übersicht, Versionsanzeige oben rechts, Karte „Update“ in den Einstellungen, Tray-Eintrag
+- install.sh installiert auf OpenWrt bei Bedarf `ca-bundle` für HTTPS
 
 ### 1.1.2
 - Build: `LibreHardwareMonitorLib.dll` fehlte in der Ausgabe – Hilfsprojekt baut jetzt für `win-x64`, zusätzlich holt `tools/collect_lhm.ps1` fehlende DLLs aus dem NuGet-Cache

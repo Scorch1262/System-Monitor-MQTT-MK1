@@ -17,6 +17,7 @@ import webbrowser
 from app.config import Config, log_dir, resource_dir
 from app.sensors import IS_WINDOWS, SensorHub
 from app.mqtt_pub import MqttPublisher
+from app.updater import Updater, cleanup_old_exe
 from app.version import APP_NAME, APP_TITLE, VERSION
 from app.webserver import WebServer
 
@@ -77,6 +78,7 @@ class Controller:
         self.hub = SensorHub(os.path.join(resource_dir(), "lhm"), self.config.get)
         self.publisher = MqttPublisher(self.hub, self.config.get)
         self.web = WebServer(self)
+        self.updater = Updater(self)
         self.tray = None
         self._quit = threading.Event()
 
@@ -123,6 +125,7 @@ class Controller:
             return
         self._quit.set()
         log.info("Programm wird beendet")
+        self.updater.stop()
         try:
             self.publisher.stop()
         except Exception:
@@ -143,9 +146,32 @@ class Controller:
                 pass
         threading.Timer(1.5, lambda: os._exit(0)).start()
 
+    def restart_process(self):
+        """Neustart nach einem Quellcode-Update (Linux): sauber beenden und neu ausführen."""
+        log.info("Programm startet neu")
+        for part in (self.publisher.stop, self.web.stop, self.hub.stop):
+            try:
+                part()
+            except Exception:
+                pass
+        self.instance.release()
+        args = [a for a in sys.argv[1:] if a not in ("--updated",)] + ["--updated"]
+        script = os.path.abspath(sys.argv[0])
+        try:
+            if IS_WINDOWS:  # Quellcode-Betrieb unter Windows
+                import subprocess
+                subprocess.Popen([sys.executable, script] + args, close_fds=True,
+                                 creationflags=0x00000008 | 0x00000200)
+                os._exit(0)
+            os.execv(sys.executable, [sys.executable, script] + args)
+        except Exception:
+            log.exception("Neustart fehlgeschlagen - Programm wird beendet")
+            os._exit(1)  # Dienst (procd/systemd) startet es neu
+
     def run(self, open_browser):
         self.hub.start()
         self.publisher.start()
+        self.updater.start()
         if not self.web.start():
             # Port belegt -> nächsten freien probieren, damit die Seite erreichbar bleibt
             port = self.config.get()["web"]["port"]
@@ -190,6 +216,9 @@ class Tray:
             pystray.MenuItem("Jetzt senden", lambda *_: c.publisher.publish_now()),
             pystray.MenuItem("Als Administrator neu starten", lambda *_: c.restart_as_admin(),
                              visible=lambda item: IS_WINDOWS and not c.hub.admin),
+            pystray.MenuItem(lambda item: "Update auf %s installieren" % (c.updater.status()["latest"] or ""),
+                             lambda *_: c.updater.install(),
+                             visible=lambda item: c.updater.status()["available"] and not c.updater.busy),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Beenden", c.quit),
         )
@@ -232,13 +261,17 @@ def main():
     parser.add_argument("--elevated", action="store_true", help="Neustart mit Adminrechten")
     parser.add_argument("--no-browser", action="store_true")
     parser.add_argument("--service", action="store_true", help="Betrieb als Linux-Dienst (procd/systemd)")
+    parser.add_argument("--updated", action="store_true", help="Start nach einem Update")
     args, _ = parser.parse_known_args()
 
     setup_logging()
     log.info("%s %s startet", APP_TITLE, VERSION)
 
     instance = SingleInstance()
-    if not instance.acquire(wait_seconds=15 if args.elevated else 0):
+    if args.updated:
+        log.info("Gestartet nach Update auf %s", VERSION)
+        cleanup_old_exe()
+    if not instance.acquire(wait_seconds=20 if (args.elevated or args.updated) else 0):
         # läuft bereits -> nur Dashboard öffnen
         cfg = Config().get()
         webbrowser.open("http://127.0.0.1:%d/" % cfg["web"]["port"])
@@ -247,7 +280,7 @@ def main():
     ctrl = Controller(instance, service=args.service or not IS_WINDOWS)
     cfg = ctrl.config.get()
     open_browser = (IS_WINDOWS and not args.autostart and not args.no_browser and
-                    not args.elevated and (ctrl.config.is_new or cfg["start"]["open_browser"]))
+                    not args.elevated and not args.updated and (ctrl.config.is_new or cfg["start"]["open_browser"]))
     ctrl.run(open_browser)
 
 

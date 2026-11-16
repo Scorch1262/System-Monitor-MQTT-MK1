@@ -80,6 +80,7 @@ DEFAULTS = {
     "web": {"port": 8095, "lan": not sys.platform.startswith("win")},
     "start": {"open_browser": False},
     "windows": {"driver_auto": True},
+    "update": {"check": True, "repo": "Scorch1262/System-Monitor-MQTT-MK1"},
 }
 
 

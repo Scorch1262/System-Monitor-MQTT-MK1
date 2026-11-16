@@ -1,3 +1,3 @@
 APP_NAME = "System-Monitor-MQTT-MK1"
 APP_TITLE = "System-Monitor MQTT MK1"
-VERSION = "1.1.2"
+VERSION = "1.2.0"

@@ -1,7 +1,7 @@
 /* System-Monitor-MQTT-MK1 – Oberfläche */
 "use strict";
 const $ = (id) => document.getElementById(id);
-let META = null, CONFIG = null, STATE = null, AUTOSTART = null, fanMax = 2500;
+let META = null, CONFIG = null, STATE = null, AUTOSTART = null, UPDATE = null, START_VERSION = null, fanMax = 2500;
 
 /* ---------------------------------------------------------- Helfer */
 function num(v, d = 1) {
@@ -91,7 +91,9 @@ function barRow(name, value, pct, cls = "") {
 function renderState(st) {
   STATE = st;
   const s = st.snapshot || {}, sens = st.sensors || {}, mq = st.mqtt || {};
-  $("version").textContent = "v" + st.version;
+  if (!START_VERSION) START_VERSION = st.version;
+  if (st.version !== START_VERSION) { location.reload(); return; }
+  renderUpdateHint(st);
   $("host").textContent = (sens.hostname || "–") + (sens.windows ? "" : " · " + (sens.platform || "Linux"));
 
   // Pillen
@@ -262,6 +264,7 @@ function fillSettings() {
   $("p-status").value = c.publish.status_topic;
   $("w-port").value = c.web.port; $("w-lan").checked = c.web.lan; $("s-open").checked = c.start.open_browser;
   $("w-driver").checked = !c.windows || c.windows.driver_auto !== false;
+  $("u-auto").checked = !c.update || c.update.check !== false;
   updateBaseResult();
 
   // Messwerte
@@ -293,6 +296,7 @@ function collectSettings() {
     web: { port: +$("w-port").value || 8095, lan: $("w-lan").checked },
     start: { open_browser: $("s-open").checked },
     windows: { driver_auto: $("w-driver").checked },
+    update: { check: $("u-auto").checked },
   };
 }
 
@@ -357,13 +361,61 @@ async function restartAdmin() {
 }
 window.restartAdmin = restartAdmin;
 
+/* ---------------------------------------------------------- Update */
+function renderUpdateHint(st) {
+  const u = st.update || {}, v = $("version"), b = $("update-banner");
+  v.textContent = "v" + st.version + (u.available ? "  →  " + u.latest : "");
+  v.classList.toggle("new", !!u.available);
+  v.onclick = u.available ? () => showView("settings") : null;
+  let html = "";
+  if (u.busy) html = `<span><b>UPDATE</b> &nbsp;${esc(u.progress || "läuft")} … Das Programm startet danach automatisch neu.</span>`;
+  else if (u.available) html = `<span><b>UPDATE</b> &nbsp;Version ${esc(u.latest)} ist verfügbar (installiert: v${esc(st.version)}).</span>` +
+    `<span><button class="btn primary" onclick="installUpdate()">Jetzt aktualisieren</button> <button class="btn" onclick="showView('settings')">Details</button></span>`;
+  if (b.dataset.html !== html) { b.innerHTML = html; b.dataset.html = html; }
+  b.classList.toggle("hidden", !html);
+}
+
+function renderUpdate(u) {
+  UPDATE = u;
+  $("u-repo").textContent = u.repo || "–";
+  setV("u-current", "v" + u.current);
+  setV("u-latest", u.latest || "–", u.available ? "hot" : "");
+  setV("u-date", u.published ? new Date(u.published).toLocaleDateString("de-DE") : "–");
+  setV("u-checked", u.checked_at ? new Date(u.checked_at * 1000).toLocaleString("de-DE") : "noch nicht");
+  setV("u-mode", u.mode === "exe" ? "exe austauschen" : u.mode === "source" ? "Programmdateien ersetzen" : "nicht unterstützt");
+  const m = $("u-msg");
+  if (u.busy) { m.className = "msg"; m.textContent = "Update läuft: " + (u.progress || "…"); }
+  else if (u.error) { m.className = "msg err"; m.textContent = u.error; }
+  else if (u.available) { m.className = "msg ok"; m.textContent = `Neue Version ${u.latest} verfügbar.`; }
+  else if (u.latest) { m.className = "msg ok"; m.textContent = "Das Programm ist auf dem neuesten Stand."; }
+  else m.textContent = "";
+  const n = $("u-notes");
+  n.textContent = u.available && u.notes ? u.notes : "";
+  n.classList.toggle("hidden", !(u.available && u.notes));
+  $("btn-uinstall").disabled = !u.available || u.busy || !u.supported;
+}
+
+async function loadUpdate() { renderUpdate(await api("/api/update").catch(() => ({ current: "?" }))); }
+
+async function installUpdate() {
+  if (!confirm("Update jetzt installieren? Das Programm startet danach automatisch neu; die Einstellungen bleiben erhalten.")) return;
+  const r = await api("/api/update/install", {}).catch((e) => ({ ok: false, message: e.message }));
+  toast(r.message, 6000);
+  if (r.ok) {
+    const t = setInterval(async () => {
+      try { const u = await api("/api/update"); renderUpdate(u); if (!u.busy && u.error) clearInterval(t); } catch (e) { /* Neustart läuft */ }
+    }, 1500);
+  }
+}
+window.installUpdate = installUpdate; window.showView = showView;
+
 /* ---------------------------------------------------------- Start */
 function showView(v) {
   document.querySelectorAll(".tabs button").forEach((b) => b.classList.toggle("active", b.dataset.view === v));
   document.querySelectorAll(".view").forEach((s) => s.classList.toggle("hidden", s.id !== "view-" + v));
   history.replaceState(null, "", "#" + v);
   if (v === "sensors") loadRaw();
-  if (v === "settings") { loadPreview(); loadAutostart(); }
+  if (v === "settings") { loadPreview(); loadAutostart(); loadUpdate(); }
   if (v === "overview" && STATE) renderState(STATE);
 }
 
@@ -376,6 +428,9 @@ async function init() {
   $("btn-all").onclick = () => document.querySelectorAll("[data-metric],[data-dyn]").forEach((e) => (e.checked = e.dataset.dyn !== "raw"));
   $("btn-none").onclick = () => document.querySelectorAll("[data-metric],[data-dyn]").forEach((e) => (e.checked = false));
   $("btn-preview").onclick = loadPreview;
+  $("btn-ucheck").onclick = async () => { $("u-msg").className = "msg"; $("u-msg").textContent = "prüfe …"; renderUpdate(await api("/api/update/check", {})); };
+  $("btn-uinstall").onclick = installUpdate;
+  $("u-auto").onchange = save;
   $("btn-admin").onclick = restartAdmin;
   $("btn-quit").onclick = async () => {
     const restart = META.service && !META.windows;
