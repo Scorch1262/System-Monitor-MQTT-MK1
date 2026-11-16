@@ -43,11 +43,7 @@ jobs:
 
       - name: LibreHardwareMonitorLib (NuGet) bauen
         shell: pwsh
-        run: |
-          dotnet build lhm/LhmDeps.csproj -c Release -o lhm_out
-          Remove-Item lhm_out/LhmDeps.* -ErrorAction SilentlyContinue
-          Get-ChildItem lhm_out | Select-Object Name, Length | Format-Table -AutoSize
-          if (-not (Test-Path lhm_out/LibreHardwareMonitorLib.dll)) { throw "LibreHardwareMonitorLib.dll fehlt" }
+        run: ./tools/collect_lhm.ps1
 
       - name: PawnIO-Setup holen (wird von der exe automatisch installiert)
         shell: pwsh
