@@ -1,7 +1,6 @@
-flask>=3.0
-paho-mqtt>=2.0
+# Nur für den Windows-Build (exe). Unter Linux genügt python3 ohne Zusatzpakete.
 psutil>=5.9
 pystray>=0.19
 pillow>=10.0
 nvidia-ml-py>=12.535
-pythonnet>=3.0.3; sys_platform == "win32"
+pythonnet>=3.0.3

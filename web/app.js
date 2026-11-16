@@ -1,7 +1,7 @@
 /* System-Monitor-MQTT-MK1 – Oberfläche */
 "use strict";
 const $ = (id) => document.getElementById(id);
-let META = null, CONFIG = null, STATE = null, fanMax = 2500;
+let META = null, CONFIG = null, STATE = null, AUTOSTART = null, fanMax = 2500;
 
 /* ---------------------------------------------------------- Helfer */
 function num(v, d = 1) {
@@ -92,18 +92,24 @@ function renderState(st) {
   STATE = st;
   const s = st.snapshot || {}, sens = st.sensors || {}, mq = st.mqtt || {};
   $("version").textContent = "v" + st.version;
-  $("host").textContent = sens.hostname || "–";
+  $("host").textContent = (sens.hostname || "–") + (sens.windows ? "" : " · " + (sens.platform || "Linux"));
 
   // Pillen
   const pm = $("pill-mqtt");
   pm.className = "pill " + (mq.state === "verbunden" ? "ok" : mq.state === "pausiert" || mq.state === "verbinde" ? "warn" : mq.state === "aus" ? "" : "err");
   pm.querySelector("span").textContent = "MQTT · " + (mq.state || "–").toUpperCase();
   const ph = $("pill-hw");
-  ph.className = "pill " + (sens.lhm_ok ? "ok" : sens.nvml ? "warn" : sens.windows ? "err" : "warn");
-  ph.querySelector("span").textContent = sens.lhm_ok ? "SENSOREN · LHM" : sens.nvml ? "SENSOREN · NVML" : "SENSOREN · BASIS";
-  ph.title = "LibreHardwareMonitor: " + sens.lhm;
+  if (sens.windows) {
+    ph.className = "pill " + (sens.lhm_ok ? (sens.admin && sens.pawnio ? "ok" : "warn") : sens.nvml ? "warn" : "err");
+    ph.querySelector("span").textContent = sens.lhm_ok ? (sens.admin && sens.pawnio ? "SENSOREN · VOLL" : "SENSOREN · TEILWEISE") : sens.nvml ? "SENSOREN · NVML" : "SENSOREN · BASIS";
+    ph.title = "LibreHardwareMonitor: " + sens.lhm + (sens.driver ? " · PawnIO: " + sens.driver : "");
+  } else {
+    ph.className = "pill " + (st.raw_count ? "ok" : "warn");
+    ph.querySelector("span").textContent = "SENSOREN · LINUX";
+    ph.title = st.raw_count + " Sensoren (hwmon/thermal)";
+  }
   const pa = $("pill-admin");
-  pa.className = "pill " + (sens.admin ? "ok" : "warn");
+  pa.className = "pill " + (sens.admin ? "ok" : "warn") + (sens.windows ? "" : " hidden");
   pa.querySelector("span").textContent = sens.admin ? "ADMIN" : "KEIN ADMIN";
   renderBanner(sens);
 
@@ -122,6 +128,7 @@ function renderState(st) {
 
   // GPU
   const gpu = s.gpu || {};
+  $("tile-gpu").classList.toggle("hidden", !(s.gpus && s.gpus.length));
   $("gpu-name").textContent = gpu.name || "keine GPU-Daten";
   gauge("g-gpu", gpu.usage);
   setV("gpu-temp", fmt(gpu.temperature, "°C"), tempClass(gpu.temperature));
@@ -146,7 +153,7 @@ function renderState(st) {
   const fans = s.fans || [];
   fans.forEach((f) => { if (f.rpm > fanMax) fanMax = f.rpm; });
   $("fans").innerHTML = fans.length ? fans.map((f) => barRow(f.name, fmt(f.rpm, "U/min", 0), f.rpm / fanMax * 100)).join("")
-    : `<div class="empty">${sens.windows ? (sens.admin ? "Keine Lüftersensoren gefunden (PawnIO installiert?)" : "Lüfter-Drehzahlen benötigen Adminrechte") : "Keine Lüftersensoren gefunden"}</div>`;
+    : `<div class="empty">${sens.windows ? (sens.admin ? "Keine Lüftersensoren gefunden – bei Notebooks liefert der Hersteller oft keine Drehzahl" : "Lüfter-Drehzahlen: „Alle Sensoren aktivieren“ (Adminrechte)") : "Keine Lüftersensoren gefunden (z. B. Raspberry Pi ohne Lüfter)"}</div>`;
 
   // Temperaturen
   const temps = [...(s.temps_board || []).map((t) => ({ ...t, g: "" })), ...(s.temps_drives || []).map((t) => ({ ...t, g: "▣ " }))];
@@ -192,15 +199,25 @@ function renderBanner(sens) {
   if (sens.windows && !sens.lhm_ok) {
     html = `<span><b>SENSOREN</b> &nbsp;LibreHardwareMonitor nicht aktiv (${esc(sens.lhm)}). Temperaturen und Lüfter fehlen ggf.; GPU-Werte über NVML, falls NVIDIA.</span>`;
   } else if (sens.windows && !sens.admin) {
-    html = `<span><b>HINWEIS</b> &nbsp;CPU-Temperatur und Mainboard-Lüfter benötigen Adminrechte (und den PawnIO-Treiber).</span>` +
-      `<button class="btn primary" onclick="restartAdmin()">Als Administrator neu starten</button>`;
+    html = `<span><b>HINWEIS</b> &nbsp;Für CPU-Temperatur und Mainboard-Lüfter braucht das Programm einmalig Adminrechte – der nötige Treiber wird dabei automatisch installiert.</span>` +
+      `<button class="btn primary" onclick="restartAdmin()">Alle Sensoren aktivieren</button>`;
   } else if (sens.windows && sens.pawnio === false) {
-    html = `<span><b>TREIBER</b> &nbsp;PawnIO ist nicht installiert – ohne ihn liefert LibreHardwareMonitor keine CPU-Temperatur/Mainboard-Lüfter. ` +
-      `<a href="https://github.com/namazso/PawnIO.Setup/releases" target="_blank" rel="noopener">PawnIO-Setup herunterladen</a>, installieren, Programm neu starten.</span>`;
+    html = `<span><b>TREIBER</b> &nbsp;PawnIO: ${esc(sens.driver || "nicht installiert")}. Details im Protokoll neben der exe.</span>`;
+  } else if (sens.windows && AUTOSTART && AUTOSTART.available && AUTOSTART.mode !== "admin" && !sessionStorageGet("tipp-weg")) {
+    html = `<span><b>TIPP</b> &nbsp;Alle Sensoren laufen. Damit das nach dem nächsten Windows-Start ohne Nachfrage so bleibt: Autostart mit Adminrechten einrichten.</span>` +
+      `<span><button class="btn primary" onclick="autostartAdmin()">Autostart einrichten</button> <button class="btn" onclick="hideTip()">Ausblenden</button></span>`;
   }
-  b.innerHTML = html;
+  if (b.dataset.html !== html) { b.innerHTML = html; b.dataset.html = html; }
   b.classList.toggle("hidden", !html);
 }
+function sessionStorageGet(k) { try { return sessionStorage.getItem(k); } catch (e) { return null; } }
+function hideTip() { try { sessionStorage.setItem("tipp-weg", "1"); } catch (e) { /* egal */ } AUTOSTART = null; renderBanner(STATE.sensors); }
+async function autostartAdmin() {
+  try { AUTOSTART = await api("/api/autostart", { mode: "admin" }); toast("Autostart mit Adminrechten eingerichtet"); loadAutostart(); }
+  catch (e) { toast("Autostart: " + e.message, 6000); }
+  renderBanner(STATE.sensors);
+}
+window.hideTip = hideTip; window.autostartAdmin = autostartAdmin;
 
 async function poll() {
   try {
@@ -244,6 +261,7 @@ function fillSettings() {
   $("p-json").checked = c.publish.json; $("p-jsub").value = c.publish.json_subtopic; $("p-single").checked = c.publish.single;
   $("p-status").value = c.publish.status_topic;
   $("w-port").value = c.web.port; $("w-lan").checked = c.web.lan; $("s-open").checked = c.start.open_browser;
+  $("w-driver").checked = !c.windows || c.windows.driver_auto !== false;
   updateBaseResult();
 
   // Messwerte
@@ -274,6 +292,7 @@ function collectSettings() {
     metrics, dynamic, gpu_select: $("gpu-sel").value,
     web: { port: +$("w-port").value || 8095, lan: $("w-lan").checked },
     start: { open_browser: $("s-open").checked },
+    windows: { driver_auto: $("w-driver").checked },
   };
 }
 
@@ -309,6 +328,8 @@ async function loadPreview() {
 
 async function loadAutostart() {
   const a = await api("/api/autostart").catch(() => ({ available: false }));
+  AUTOSTART = a;
+  $("a-linux").textContent = a.linux || "";
   const sel = $("a-mode");
   sel.disabled = !a.available;
   sel.value = a.mode || "off";
@@ -357,8 +378,10 @@ async function init() {
   $("btn-preview").onclick = loadPreview;
   $("btn-admin").onclick = restartAdmin;
   $("btn-quit").onclick = async () => {
-    if (!confirm("Programm wirklich beenden? Es werden dann keine Werte mehr gesendet.")) return;
+    const restart = META.service && !META.windows;
+    if (!confirm(restart ? "Dienst neu starten?" : "Programm wirklich beenden? Es werden dann keine Werte mehr gesendet.")) return;
     await api("/api/quit", {}).catch(() => {});
+    if (restart) { toast("Dienst startet neu …"); setTimeout(() => location.reload(), 6000); return; }
     document.body.innerHTML = `<main><div class="banner"><span><b>BEENDET</b> &nbsp;Das Programm wurde beendet.</span></div></main>`;
   };
   $("btn-send").onclick = async () => {
@@ -376,6 +399,10 @@ async function init() {
   };
 
   [META, CONFIG] = await Promise.all([api("/api/meta"), api("/api/config")]);
+  document.body.classList.toggle("linux", !META.windows);
+  $("raw-source").textContent = (META.windows ? "Quelle: LibreHardwareMonitor" : "Quelle: Linux hwmon / thermal") + " · Topics bei aktivierten „Rohsensoren“";
+  if (META.service && !META.windows) $("btn-quit").textContent = "Dienst neu starten";
+  loadAutostart();
   await poll();
   fillSettings();
   const v = location.hash.replace("#", "");

@@ -108,9 +108,27 @@ def _task_delete():
                            + (r.stderr or r.stdout).strip())
 
 
+SERVICE = "system-monitor-mqtt"
+
+
+def linux_service_status():
+    """Autostart unter Linux richtet install.sh als Dienst ein (procd bzw. systemd)."""
+    if os.path.exists("/etc/init.d/" + SERVICE):
+        enabled = any(n.endswith(SERVICE) for n in os.listdir("/etc/rc.d")) if os.path.isdir("/etc/rc.d") else False
+        return "Dienst (procd) " + ("aktiv beim Systemstart" if enabled else "eingerichtet, aber deaktiviert")
+    if os.path.exists("/etc/systemd/system/%s.service" % SERVICE):
+        try:
+            r = subprocess.run(["systemctl", "is-enabled", SERVICE], capture_output=True, text=True)
+            on = r.stdout.strip() == "enabled"
+        except OSError:
+            on = False
+        return "Dienst (systemd) " + ("aktiv beim Systemstart" if on else "eingerichtet, aber deaktiviert")
+    return "kein Dienst eingerichtet - install.sh ausführen"
+
+
 def status():
     if not IS_WINDOWS:
-        return {"available": False, "mode": "off", "admin": is_admin()}
+        return {"available": False, "mode": "off", "admin": is_admin(), "linux": linux_service_status()}
     task = _task_exists()
     reg = _reg_get()
     mode = "admin" if task else ("user" if reg else "off")
@@ -137,3 +155,19 @@ def set_mode(mode):
             _task_delete()
         _reg_set(False)
     return status()
+
+
+def openwrt_firewall_port(port):
+    """Passt die von install.sh angelegte Firewall-Regel (OpenWrt) an einen neuen Webport an."""
+    if not os.path.exists("/etc/openwrt_release"):
+        return
+    try:
+        if subprocess.run(["uci", "-q", "get", "firewall.system_monitor_mqtt"],
+                          capture_output=True).returncode != 0:
+            return
+        subprocess.run(["uci", "set", "firewall.system_monitor_mqtt.dest_port=%d" % int(port)], check=True)
+        subprocess.run(["uci", "commit", "firewall"], check=True)
+        subprocess.run(["/etc/init.d/firewall", "reload"], capture_output=True)
+        log.info("Firewall-Regel auf Port %d angepasst", int(port))
+    except Exception as e:
+        log.warning("Firewall-Regel nicht angepasst: %s", e)

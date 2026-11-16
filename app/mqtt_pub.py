@@ -1,15 +1,12 @@
 """MQTT-Versand der Messwerte."""
 import json
 import logging
-import ssl
 import threading
 import time
-import uuid
 from datetime import datetime, timezone
 
-import paho.mqtt.client as mqtt
-
 from .config import CORE_METRICS
+from .mqtt_client import MiniMqtt, random_suffix
 from .sensors import slug
 from .version import APP_NAME, VERSION
 
@@ -146,47 +143,27 @@ def build_messages(snap, raw, cfg, hostname):
     return base, msgs, js
 
 
-def _make_client(mc, client_id):
-    client = mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
-                         client_id=client_id, clean_session=True)
-    if mc.get("username"):
-        client.username_pw_set(mc["username"], mc.get("password") or None)
-    if mc.get("tls"):
-        ctx = ssl.create_default_context()
-        if mc.get("tls_insecure"):
-            ctx.check_hostname = False
-            ctx.verify_mode = ssl.CERT_NONE
-        client.tls_set_context(ctx)
-    return client
+def _make_client(mc, client_id, will=None):
+    return MiniMqtt(client_id, mc.get("username", ""), mc.get("password", ""),
+                    keepalive=int(mc.get("keepalive", 60)), tls=bool(mc.get("tls")),
+                    tls_insecure=bool(mc.get("tls_insecure")), will=will)
 
 
 def test_connection(mc, timeout=6.0):
     if not mc.get("host"):
         return False, "Kein Broker angegeben"
-    result = {"done": threading.Event(), "ok": False, "msg": "Zeitüberschreitung"}
-
-    def on_connect(client, userdata, flags, reason_code, properties):
-        result["ok"] = not reason_code.is_failure
-        result["msg"] = "Verbindung erfolgreich" if result["ok"] else "Abgelehnt: %s" % reason_code
-        result["done"].set()
-
-    client = _make_client(mc, "%s-test-%s" % (APP_NAME, uuid.uuid4().hex[:6]))
-    client.on_connect = on_connect
+    client = _make_client(mc, "%s-test-%s" % (APP_NAME, random_suffix()))
     try:
-        client.connect(mc["host"], int(mc["port"]), keepalive=10)
+        client.connect(mc["host"], int(mc["port"]), timeout=timeout)
     except Exception as e:
         return False, "Verbindung fehlgeschlagen: %s" % e
-    client.loop_start()
-    result["done"].wait(timeout)
-    client.loop_stop()
-    try:
-        client.disconnect()
-    except Exception:
-        pass
-    return result["ok"], result["msg"]
+    client.disconnect()
+    return True, "Verbindung erfolgreich"
 
 
 class MqttPublisher:
+    """Hält die Verbindung zum Broker (mit automatischem Wiederverbinden) und sendet im Intervall."""
+
     def __init__(self, hub, get_config):
         self.hub = hub
         self.get_config = get_config
@@ -198,13 +175,14 @@ class MqttPublisher:
         self.last_count = 0
         self.paused = False
         self._conn_key = None
-        self._status_topic = None
+        self._target = None  # (mqtt-config, status_topic)
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self._wake = threading.Event()
         self._thread = None
+        self._retry_at = 0.0
+        self._retry_delay = 2.0
 
-    # ------------------------------------------------------------ Lebenszyklus
     def start(self):
         self.apply_config()
         self._thread = threading.Thread(target=self._run, name="mqtt", daemon=True)
@@ -223,96 +201,82 @@ class MqttPublisher:
         status_topic = base + "/" + st if st else None
         key = json.dumps([mc, status_topic], sort_keys=True)
         with self._lock:
-            if key == self._conn_key:
-                self._wake.set()
-                return
+            changed = key != self._conn_key
             self._conn_key = key
-        self._disconnect(graceful=True)
-        if not mc.get("host"):
-            self.state = "aus"
+            if changed:
+                self._target = (dict(mc), status_topic) if mc.get("host") else None
+                self._retry_at = 0.0
+                self._retry_delay = 2.0
+        if changed:
+            self._disconnect(graceful=True)
+            self.state = "verbinde" if self._target else "aus"
             self.last_error = ""
-            return
-        self._connect(mc, status_topic)
+            self.last_publish = None
         self._wake.set()
 
-    def _connect(self, mc, status_topic):
-        cid = mc.get("client_id") or "%s-%s" % (slug(self.hub.hostname), uuid.uuid4().hex[:6])
-        client = _make_client(mc, cid)
-        client.on_connect = self._on_connect
+    def _connect(self):
+        mc, status_topic = self._target
+        cid = mc.get("client_id") or "%s-%s" % (slug(self.hub.hostname), random_suffix())
+        will = (status_topic, "offline", 1, True) if status_topic else None
+        client = _make_client(mc, cid, will)
         client.on_disconnect = self._on_disconnect
-        client.reconnect_delay_set(min_delay=2, max_delay=60)
-        self._status_topic = status_topic
-        if status_topic:
-            client.will_set(status_topic, "offline", qos=1, retain=True)
         self.state = "verbinde"
-        self.last_error = ""
         try:
-            client.connect_async(mc["host"], int(mc["port"]), keepalive=int(mc.get("keepalive", 60)))
-            client.loop_start()
-            self.client = client
+            client.connect(mc["host"], int(mc["port"]))
         except Exception as e:
             self.state = "fehler"
             self.last_error = str(e)
-            log.warning("MQTT-Verbindung fehlgeschlagen: %s", e)
+            self._retry_at = time.time() + self._retry_delay
+            log.warning("MQTT-Verbindung fehlgeschlagen: %s (neuer Versuch in %ds)", e, self._retry_delay)
+            self._retry_delay = min(60.0, self._retry_delay * 2)
+            return
+        self.client = client
+        self.state = "verbunden"
+        self.last_error = ""
+        self._retry_delay = 2.0
+        log.info("MQTT verbunden mit %s:%s", mc["host"], mc["port"])
+        if status_topic:
+            client.publish(status_topic, "online", qos=1, retain=True)
+
+    def _on_disconnect(self, reason):
+        self.state = "getrennt"
+        self.last_error = "Verbindung verloren: %s" % reason
+        self._retry_at = time.time() + 2
+        log.info("MQTT getrennt (%s)", reason)
+        self._wake.set()
 
     def _disconnect(self, graceful=False):
         client, self.client = self.client, None
         if not client:
             return
         try:
-            if graceful and self.state == "verbunden" and self._status_topic:
-                client.publish(self._status_topic, "offline", qos=1, retain=True).wait_for_publish(2)
+            if graceful and client.connected and self._target and self._target[1]:
+                client.publish(self._target[1], "offline", qos=1, retain=True)
         except Exception:
             pass
-        try:
-            client.disconnect()
-            client.loop_stop()
-        except Exception:
-            pass
-        self.state = "aus"
+        client.disconnect()
 
-    def _on_connect(self, client, userdata, flags, reason_code, properties):
-        if reason_code.is_failure:
-            self.state = "fehler"
-            self.last_error = "Broker lehnt ab: %s" % reason_code
-            log.warning(self.last_error)
-            return
-        self.state = "verbunden"
-        self.last_error = ""
-        log.info("MQTT verbunden")
-        if self._status_topic:
-            client.publish(self._status_topic, "online", qos=1, retain=True)
-        self._wake.set()
-
-    def _on_disconnect(self, client, userdata, flags, reason_code, properties):
-        if client is not self.client:
-            return
-        self.state = "getrennt"
-        if reason_code and reason_code.is_failure:
-            self.last_error = "Verbindung verloren: %s" % reason_code
-        log.info("MQTT getrennt (%s)", reason_code)
-
-    # ------------------------------------------------------------ Senden
     def _run(self):
-        next_due = 0
+        next_due = 0.0
         while not self._stop.is_set():
-            cfg = self.get_config()
-            interval = float(cfg["publish"]["interval"])
             now = time.time()
-            if now >= next_due:
+            if self._target and (self.client is None or not self.client.connected) and now >= self._retry_at:
+                self.client = None
+                self._connect()
+                if self.state == "verbunden":
+                    next_due = 0.0
+            cfg = self.get_config()
+            if time.time() >= next_due:
                 if self.state == "verbunden" and cfg["publish"]["enabled"] and not self.paused:
                     self.publish_now(cfg)
-                next_due = now + interval
+                next_due = time.time() + float(cfg["publish"]["interval"])
             self._wake.wait(min(1.0, max(0.05, next_due - time.time())))
-            if self._wake.is_set():
-                self._wake.clear()
-                if self.state == "verbunden" and self.last_publish is None:
-                    next_due = 0
+            self._wake.clear()
 
     def publish_now(self, cfg=None):
         cfg = cfg or self.get_config()
         client = self.client
-        if not client or self.state != "verbunden":
+        if not client or not client.connected:
             return 0
         snap, raw = self.hub.get()
         _, msgs, _ = build_messages(snap, raw, cfg, self.hub.hostname)
@@ -320,12 +284,8 @@ class MqttPublisher:
         retain = bool(cfg["mqtt"].get("retain", False))
         n = 0
         for topic, payload in msgs:
-            try:
-                info = client.publish(topic, payload, qos=qos, retain=retain)
-                if info.rc == mqtt.MQTT_ERR_SUCCESS:
-                    n += 1
-            except Exception as e:
-                self.last_error = str(e)
+            if client.publish(topic, payload, qos=qos, retain=retain):
+                n += 1
         self.sent_total += n
         self.last_count = n
         self.last_publish = time.time()

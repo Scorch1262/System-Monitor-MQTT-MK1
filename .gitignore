@@ -8,3 +8,4 @@ lhm/bin/
 lhm/obj/
 *.log
 System-Monitor-MQTT-MK1.json
+drivers/

@@ -8,11 +8,11 @@ LibreHardwareMonitorLib  – Mozilla Public License 2.0
 
 HidSharp                 – Apache License 2.0
 pythonnet                – MIT License
-Flask / Werkzeug         – BSD-3-Clause
-paho-mqtt                – EPL-2.0 / EDL-1.0
 psutil                   – BSD-3-Clause
 pystray                  – LGPL-3.0
 Pillow                   – MIT-CMU (HPND)
 nvidia-ml-py             – BSD-3-Clause
 
-PawnIO (Treiber, NICHT enthalten, separat zu installieren) – https://github.com/namazso/PawnIO.Setup
+PawnIO-Setup (Treiber)   – unverändertes, signiertes Setup aus https://github.com/namazso/PawnIO.Setup
+  in der Windows-exe enthalten (Ordner drivers) und wird automatisch installiert;
+  Lizenz siehe Projektseite.

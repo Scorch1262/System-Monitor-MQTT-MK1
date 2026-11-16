@@ -1,7 +1,9 @@
 """System-Monitor-MQTT-MK1 - Einstiegspunkt.
 
-Läuft im Hintergrund (Infobereich/Tray), stellt eine lokale Webseite bereit und sendet
-Systemwerte (CPU, GPU, RAM, Temperaturen, Lüfter ...) an einen MQTT-Broker.
+Windows: läuft im Hintergrund (Infobereich/Tray).
+Linux (Raspberry Pi, GL.iNet Brume 2): läuft als Dienst (install.sh richtet procd/systemd ein).
+Stellt eine Webseite bereit und sendet Systemwerte (CPU, GPU, RAM, Temperaturen, Lüfter ...)
+an einen MQTT-Broker.
 """
 import argparse
 import logging
@@ -12,7 +14,7 @@ import threading
 import time
 import webbrowser
 
-from app.config import Config, data_dir, resource_dir
+from app.config import Config, log_dir, resource_dir
 from app.sensors import IS_WINDOWS, SensorHub
 from app.mqtt_pub import MqttPublisher
 from app.version import APP_NAME, APP_TITLE, VERSION
@@ -22,14 +24,14 @@ log = logging.getLogger(APP_NAME)
 
 
 def setup_logging():
-    path = os.path.join(data_dir(), APP_NAME + ".log")
+    path = os.path.join(log_dir(), APP_NAME + ".log")
     handler = logging.handlers.RotatingFileHandler(path, maxBytes=1_000_000, backupCount=2,
                                                    encoding="utf-8")
     handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)-7s %(name)s: %(message)s"))
     root = logging.getLogger()
     root.setLevel(logging.INFO)
     root.addHandler(handler)
-    if sys.stderr is not None and not getattr(sys, "frozen", False):
+    if sys.stderr is not None and not getattr(sys, "frozen", False) and sys.stderr.isatty():
         root.addHandler(logging.StreamHandler())
     logging.getLogger("werkzeug").setLevel(logging.WARNING)
 
@@ -68,8 +70,9 @@ class SingleInstance:
 
 # --------------------------------------------------------------------------- Steuerung
 class Controller:
-    def __init__(self, instance):
+    def __init__(self, instance, service=False):
         self.instance = instance
+        self.service = service
         self.config = Config()
         self.hub = SensorHub(os.path.join(resource_dir(), "lhm"), self.config.get)
         self.publisher = MqttPublisher(self.hub, self.config.get)
@@ -152,8 +155,8 @@ class Controller:
                     break
         if open_browser:
             threading.Timer(1.0, self.open_dashboard).start()
-        self.tray = Tray(self)
-        if not self.tray.run():  # kein Tray verfügbar -> einfach weiterlaufen
+        self.tray = Tray(self) if IS_WINDOWS and not self.service else None
+        if not (self.tray and self.tray.run()):  # Linux-Dienst oder kein Tray -> einfach weiterlaufen
             try:
                 while not self._quit.is_set():
                     self._quit.wait(1)
@@ -228,6 +231,7 @@ def main():
     parser.add_argument("--autostart", action="store_true", help="Start durch Autostart (kein Browser)")
     parser.add_argument("--elevated", action="store_true", help="Neustart mit Adminrechten")
     parser.add_argument("--no-browser", action="store_true")
+    parser.add_argument("--service", action="store_true", help="Betrieb als Linux-Dienst (procd/systemd)")
     args, _ = parser.parse_known_args()
 
     setup_logging()
@@ -240,9 +244,9 @@ def main():
         webbrowser.open("http://127.0.0.1:%d/" % cfg["web"]["port"])
         return
 
-    ctrl = Controller(instance)
+    ctrl = Controller(instance, service=args.service or not IS_WINDOWS)
     cfg = ctrl.config.get()
-    open_browser = (not args.autostart and not args.no_browser and
+    open_browser = (IS_WINDOWS and not args.autostart and not args.no_browser and
                     not args.elevated and (ctrl.config.is_new or cfg["start"]["open_browser"]))
     ctrl.run(open_browser)
 

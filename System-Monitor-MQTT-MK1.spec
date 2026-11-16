@@ -12,6 +12,11 @@ if os.path.isdir("lhm_out"):
 else:
     print("WARNUNG: Ordner lhm_out fehlt - exe läuft ohne LibreHardwareMonitor (keine CPU-Temperatur/Lüfter)")
 
+if os.path.isfile(os.path.join("drivers", "PawnIO_setup.exe")):
+    datas.append(("drivers/PawnIO_setup.exe", "drivers"))
+else:
+    print("WARNUNG: drivers/PawnIO_setup.exe fehlt - Treiber wird nicht automatisch installiert")
+
 for pkg in ("pythonnet", "clr_loader"):
     try:
         d, b, h = collect_all(pkg)

@@ -55,7 +55,7 @@
         <div class="legend"><span class="t">AUSLASTUNG</span><span class="a">TEMPERATUR</span></div>
       </div>
 
-      <div class="tile">
+      <div class="tile" id="tile-gpu">
         <div class="tile-head"><span class="tile-title">GPU</span><span class="tile-sub" id="gpu-name">–</span></div>
         <div class="tile-main">
           <div class="gauge" id="g-gpu"></div>
@@ -138,7 +138,7 @@
       <div class="tile-head"><span class="tile-title">ALLE HARDWARE-SENSOREN</span><span class="tile-sub" id="raw-count">–</span></div>
       <div class="toolbar">
         <input type="text" id="raw-filter" placeholder="Filter (z. B. Fan, Temperature, GPU)" style="max-width:360px">
-        <span class="msg">Quelle: LibreHardwareMonitor · Topics bei aktivierten „Rohsensoren“</span>
+        <span class="msg" id="raw-source">Topics bei aktivierten „Rohsensoren“</span>
       </div>
       <div class="table-wrap">
         <table>
@@ -219,19 +219,21 @@
         <div class="form">
           <label for="w-port">Webseiten-Port</label><input type="number" id="w-port" min="1" max="65535">
           <label>Netzwerk</label><label class="check"><input type="checkbox" id="w-lan">Webseite im LAN erreichbar (sonst nur dieser PC)</label>
-          <label>Start</label><label class="check"><input type="checkbox" id="s-open">Dashboard beim Programmstart öffnen</label>
+          <label class="win-only">Start</label><label class="check win-only"><input type="checkbox" id="s-open">Dashboard beim Programmstart öffnen</label>
+          <label class="win-only">Sensortreiber</label><label class="check win-only"><input type="checkbox" id="w-driver">PawnIO automatisch installieren (bei Adminrechten)</label>
           <label for="a-mode">Autostart</label>
-          <select id="a-mode">
+          <span class="msg linux-only" id="a-linux"></span>
+          <select id="a-mode" class="win-only">
             <option value="off">Aus</option>
             <option value="user">Mit Windows starten (normal)</option>
             <option value="admin">Mit Windows starten (Adminrechte – alle Sensoren)</option>
           </select>
-          <span class="hint" id="a-hint"></span>
+          <span class="hint win-only" id="a-hint"></span>
           <label>Konfiguration</label><span class="msg" id="cfg-path" style="word-break:break-all"></span>
         </div>
         <div class="actions">
           <button class="btn primary" data-save>Speichern</button>
-          <button class="btn" id="btn-admin">Als Administrator neu starten</button>
+          <button class="btn win-only" id="btn-admin">Als Administrator neu starten</button>
           <button class="btn danger" id="btn-quit">Programm beenden</button>
         </div>
       </div>

@@ -47,7 +47,7 @@ DYNAMIC_GROUPS = [
     ("temps_board", "Mainboard-Temperaturen", "temps/<name>"),
     ("temps_drives", "Laufwerks-Temperaturen", "drives/<name>/temperature"),
     ("disks", "Laufwerks-Belegung", "disks/<laufwerk>/usage, /free_gb"),
-    ("raw", "Alle Rohsensoren (LibreHardwareMonitor)", "sensors/<hardware>/<typ>/<sensor>"),
+    ("raw", "Alle Rohsensoren (LibreHardwareMonitor / Linux-hwmon)", "sensors/<hardware>/<typ>/<sensor>"),
 ]
 
 DEFAULTS = {
@@ -76,8 +76,10 @@ DEFAULTS = {
     "dynamic": {"cores": False, "fans": True, "temps_board": True, "temps_drives": True,
                 "disks": True, "raw": False},
     "gpu_select": "auto",
-    "web": {"port": 8095, "lan": False},
+    # Unter Linux (Brume 2, Raspberry) läuft das Programm ohne Bildschirm -> Webseite im LAN
+    "web": {"port": 8095, "lan": not sys.platform.startswith("win")},
     "start": {"open_browser": False},
+    "windows": {"driver_auto": True},
 }
 
 
@@ -85,6 +87,17 @@ def app_dir():
     if getattr(sys, "frozen", False):
         return os.path.dirname(os.path.abspath(sys.executable))
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def is_openwrt():
+    return os.path.exists("/etc/openwrt_release")
+
+
+def log_dir():
+    """Auf OpenWrt ins RAM (/tmp), um den Flash-Speicher zu schonen."""
+    if is_openwrt():
+        return "/tmp"
+    return data_dir()
 
 
 def resource_dir():

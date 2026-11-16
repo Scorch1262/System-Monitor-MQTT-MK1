@@ -1,9 +1,12 @@
 """Sensor-Erfassung.
 
-Quellen (in dieser Reihenfolge):
-  1. LibreHardwareMonitorLib (Windows, über pythonnet) - CPU-Temperatur, Lüfter, GPU, Mainboard ...
+Windows:
+  1. LibreHardwareMonitorLib (über pythonnet) - CPU-Temperatur, Lüfter, GPU, Mainboard ...
+     Treiber PawnIO wird bei Adminrechten automatisch aus der exe installiert (driver.py)
   2. NVIDIA NVML (nvidia-ml-py) - GPU-Werte ohne Adminrechte als Ergänzung/Ersatz
-  3. psutil - CPU-Last, RAM, Laufwerke, Netzwerk, Akku (unter Linux auch Temperaturen/Lüfter)
+  3. psutil - CPU-Last, RAM, Laufwerke, Netzwerk, Akku
+Linux (Raspberry Pi, GL.iNet Brume 2 ...):
+  /proc und /sys (linux_sys.py) - keine Zusatzpakete nötig; NVML falls vorhanden
 """
 import collections
 import logging
@@ -14,8 +17,6 @@ import socket
 import sys
 import threading
 import time
-
-import psutil
 
 log = logging.getLogger(__name__)
 IS_WINDOWS = sys.platform.startswith("win")
@@ -411,10 +412,18 @@ class SensorHub:
         self._stop = threading.Event()
         self._thread = None
         self._last_io = None
-        self._cpu_name = cpu_name_fallback()
         self.admin = is_admin()
         self.pawnio = pawnio_installed()
+        self.driver_status = ""
         self.hostname = socket.gethostname()
+        if IS_WINDOWS:
+            self.linux = None
+            self._cpu_name = cpu_name_fallback()
+        else:
+            from .linux_sys import LinuxSys
+            self.linux = LinuxSys()
+            self._cpu_name = self.linux.cpu_name()
+            self.lhm.status = "nur unter Windows"
 
     def start(self):
         self._thread = threading.Thread(target=self._run, name="sensoren", daemon=True)
@@ -426,9 +435,17 @@ class SensorHub:
             self._thread.join(timeout=3)
 
     def _run(self):
-        self.lhm.start()
+        if IS_WINDOWS:
+            if self.get_config().get("windows", {}).get("driver_auto", True):
+                from .driver import ensure_pawnio
+                self.driver_status = ensure_pawnio(self.admin)
+                self.pawnio = pawnio_installed()
+            self.lhm.start()
+            import psutil
+            psutil.cpu_percent(percpu=True)
+        else:
+            self.linux.cpu_usage()
         self.nvml.start()
-        psutil.cpu_percent(percpu=True)
         while not self._stop.is_set():
             t0 = time.time()
             try:
@@ -446,7 +463,9 @@ class SensorHub:
             "nvml": self.nvml.ok,
             "admin": self.admin,
             "pawnio": self.pawnio,
+            "driver": self.driver_status,
             "windows": IS_WINDOWS,
+            "platform": "Windows" if IS_WINDOWS else (self.linux.device_model() or "Linux"),
             "hostname": self.hostname,
         }
 
@@ -460,32 +479,16 @@ class SensorHub:
 
     # ---------------------------------------------------------------
     def _sample(self):
-        cfg = self.get_config()
-        raw = self.lhm.read()
         now = time.time()
+        if IS_WINDOWS:
+            parts = self._sample_windows()
+        else:
+            parts = self._sample_linux()
+        raw, cpu, ram, swap, fans, board_temps, drive_temps, disks, io, system = parts
 
-        # --- CPU
-        cores = psutil.cpu_percent(percpu=True)
-        cpu = {"name": self._cpu_name, "usage": sum(cores) / len(cores) if cores else None,
-               "temperature": None, "clock": None, "power": None,
-               "cores": [_rnd(c) for c in cores]}
-        try:
-            f = psutil.cpu_freq()
-            if f and f.current:
-                cpu["clock"] = f.current
-        except Exception:
-            pass
-        lc = lhm_cpu(raw)
-        for k, v in lc.items():
-            if v is not None:
-                cpu[k] = v
-        if cpu["temperature"] is None and not IS_WINDOWS:
-            cpu["temperature"] = self._psutil_cpu_temp()
-
-        # --- GPU
-        gpus = lhm_gpus(raw)
-        nv = self.nvml.read()
-        for ng in nv:
+        # --- GPU (LHM unter Windows, NVML auf beiden Systemen)
+        gpus = lhm_gpus(raw) if IS_WINDOWS else []
+        for ng in self.nvml.read():
             match = next((g for g in gpus if g.get("vendor") == "Nvidia" and
                           (ng["name"] in g["name"] or g["name"] in ng["name"])), None)
             if match:
@@ -497,68 +500,24 @@ class SensorHub:
         for g in gpus:
             if g.get("memory_used") is not None and g.get("memory_total"):
                 g["memory_usage"] = g["memory_used"] / g["memory_total"] * 100.0
-        gpu = self._select_gpu(gpus, cfg.get("gpu_select", "auto"))
-
-        # --- RAM
-        vm = psutil.virtual_memory()
-        sw = psutil.swap_memory()
-        gb = 1024 ** 3
-        ram = {"usage": vm.percent, "used": (vm.total - vm.available) / gb,
-               "total": vm.total / gb, "available": vm.available / gb}
-        swap = {"usage": sw.percent, "used": sw.used / gb, "total": sw.total / gb}
-
-        # --- Lüfter / Temperaturen
-        fans = lhm_fans(raw)
-        board_temps = lhm_board_temps(raw)
-        drive_temps = lhm_drive_temps(raw)
-        if not raw and not IS_WINDOWS:
-            fans = self._psutil_fans()
-            board_temps = self._psutil_other_temps()
-
-        # --- Laufwerke
-        disks = []
-        for p in psutil.disk_partitions(all=False):
-            if not p.fstype or "cdrom" in p.opts or p.mountpoint.startswith(("/snap", "/boot", "/run", "/sys", "/proc")):
-                continue
-            try:
-                u = psutil.disk_usage(p.mountpoint)
-            except Exception:
-                continue
-            label = p.mountpoint.rstrip("\\/:") if IS_WINDOWS else p.mountpoint
-            disks.append({"name": label or p.mountpoint, "usage": u.percent,
-                          "used_gb": u.used / gb, "total_gb": u.total / gb, "free_gb": u.free / gb})
+        gpu = self._select_gpu(gpus, self.get_config().get("gpu_select", "auto"))
 
         # --- I/O-Raten
         disk_io = {"read": None, "write": None}
         net = {"up": None, "down": None}
-        try:
-            dio = psutil.disk_io_counters()
-        except Exception:
-            dio = None
-        nio = self._net_counters()
+        dio, nio = io
         if self._last_io:
             t_old, dio_old, nio_old = self._last_io
             dt = max(0.001, now - t_old)
             if dio and dio_old:
-                disk_io["read"] = max(0, dio.read_bytes - dio_old.read_bytes) / dt / 1048576.0
-                disk_io["write"] = max(0, dio.write_bytes - dio_old.write_bytes) / dt / 1048576.0
+                disk_io["read"] = max(0, dio[0] - dio_old[0]) / dt / 1048576.0
+                disk_io["write"] = max(0, dio[1] - dio_old[1]) / dt / 1048576.0
             if nio and nio_old:
                 net["up"] = max(0, nio[0] - nio_old[0]) / dt / 1024.0
                 net["down"] = max(0, nio[1] - nio_old[1]) / dt / 1024.0
         self._last_io = (now, dio, nio)
 
-        # --- System
-        system = {"uptime": int(now - psutil.boot_time()), "processes": len(psutil.pids()),
-                  "battery": None, "battery_plugged": None, "hostname": self.hostname,
-                  "os": "%s %s" % (platform.system(), platform.release())}
-        try:
-            b = psutil.sensors_battery()
-            if b:
-                system["battery"] = b.percent
-                system["battery_plugged"] = b.power_plugged
-        except Exception:
-            pass
-
+        system["hostname"] = self.hostname
         snap = {"ts": now, "cpu": cpu, "gpu": gpu, "gpus": gpus, "ram": ram, "swap": swap,
                 "fans": fans, "temps_board": board_temps, "temps_drives": drive_temps,
                 "disks": disks, "disk_io": disk_io, "net": net, "system": system}
@@ -574,6 +533,94 @@ class SensorHub:
             h["net_up"].append(_rnd(net["up"]))
             h["net_down"].append(_rnd(net["down"]))
 
+    def _sample_windows(self):
+        import psutil
+        raw = self.lhm.read()
+        gb = 1024 ** 3
+        cores = psutil.cpu_percent(percpu=True)
+        cpu = {"name": self._cpu_name, "usage": sum(cores) / len(cores) if cores else None,
+               "temperature": None, "clock": None, "power": None, "cores": [_rnd(c) for c in cores]}
+        try:
+            f = psutil.cpu_freq()
+            if f and f.current:
+                cpu["clock"] = f.current
+        except Exception:
+            pass
+        for k, v in lhm_cpu(raw).items():
+            if v is not None:
+                cpu[k] = v
+        vm = psutil.virtual_memory()
+        sw = psutil.swap_memory()
+        ram = {"usage": vm.percent, "used": (vm.total - vm.available) / gb,
+               "total": vm.total / gb, "available": vm.available / gb}
+        swap = {"usage": sw.percent, "used": sw.used / gb, "total": sw.total / gb}
+        disks = []
+        for p in psutil.disk_partitions(all=False):
+            if not p.fstype or "cdrom" in p.opts:
+                continue
+            try:
+                u = psutil.disk_usage(p.mountpoint)
+            except Exception:
+                continue
+            disks.append({"name": p.mountpoint.rstrip("\\/:") or p.mountpoint, "usage": u.percent,
+                          "used_gb": u.used / gb, "total_gb": u.total / gb, "free_gb": u.free / gb})
+        try:
+            d = psutil.disk_io_counters()
+            dio = (d.read_bytes, d.write_bytes) if d else None
+        except Exception:
+            dio = None
+        nio = None
+        try:
+            sent = recv = 0
+            for name, c in psutil.net_io_counters(pernic=True).items():
+                if "loopback" in name.lower():
+                    continue
+                sent += c.bytes_sent
+                recv += c.bytes_recv
+            nio = (sent, recv)
+        except Exception:
+            pass
+        system = {"uptime": int(time.time() - psutil.boot_time()), "processes": len(psutil.pids()),
+                  "battery": None, "battery_plugged": None, "os": "%s %s" % (platform.system(), platform.release())}
+        try:
+            b = psutil.sensors_battery()
+            if b:
+                system["battery"] = b.percent
+                system["battery_plugged"] = b.power_plugged
+        except Exception:
+            pass
+        return (raw, cpu, ram, swap, lhm_fans(raw), lhm_board_temps(raw), lhm_drive_temps(raw),
+                disks, (dio, nio), system)
+
+    def _sample_linux(self):
+        from .linux_sys import split_sensors
+        L = self.linux
+        gb = 1024 ** 3
+        raw = L.sensors()
+        total, cores = L.cpu_usage()
+        cpu_temp, board, drives, fans = split_sensors(raw)
+        cpu = {"name": self._cpu_name, "usage": total, "temperature": cpu_temp, "clock": L.cpu_freq(),
+               "power": None, "cores": [_rnd(c) for c in cores]}
+        mt, ma, st, su = L.memory()
+        ram = {"usage": (mt - ma) / mt * 100.0 if mt else None, "used": (mt - ma) / gb,
+               "total": mt / gb, "available": ma / gb}
+        swap = {"usage": su / st * 100.0 if st else 0.0, "used": su / gb, "total": st / gb}
+        up = L.uptime()
+        bat, plugged = L.battery()
+        system = {"uptime": int(up) if up is not None else None, "processes": L.processes(),
+                  "battery": bat, "battery_plugged": plugged,
+                  "os": "%s %s" % (platform.system(), platform.release())}
+        try:
+            dio = L.disk_io_bytes()
+        except Exception:
+            dio = None
+        try:
+            nio = L.net_bytes()
+        except Exception:
+            nio = None
+        return (raw, cpu, ram, swap, _dedupe(fans), _dedupe(board), _dedupe(drives),
+                L.disks(), (dio, nio), system)
+
     @staticmethod
     def _select_gpu(gpus, sel):
         if not gpus:
@@ -583,54 +630,3 @@ class SensorHub:
                 if g.get("name") == sel:
                     return g
         return gpus[0]
-
-    @staticmethod
-    def _net_counters():
-        try:
-            per = psutil.net_io_counters(pernic=True)
-        except Exception:
-            return None
-        sent = recv = 0
-        for name, c in per.items():
-            low = name.lower()
-            if low == "lo" or "loopback" in low:
-                continue
-            sent += c.bytes_sent
-            recv += c.bytes_recv
-        return (sent, recv)
-
-    @staticmethod
-    def _psutil_cpu_temp():
-        try:
-            temps = psutil.sensors_temperatures()
-        except Exception:
-            return None
-        for key in ("coretemp", "k10temp", "zenpower", "cpu_thermal", "acpitz"):
-            for t in temps.get(key, []):
-                if t.current:
-                    return t.current
-        return None
-
-    @staticmethod
-    def _psutil_fans():
-        out = []
-        try:
-            for chip, fans in (psutil.sensors_fans() or {}).items():
-                for i, f in enumerate(fans):
-                    out.append({"name": f.label or "%s %d" % (chip, i + 1), "rpm": f.current})
-        except Exception:
-            pass
-        return _dedupe(out)
-
-    @staticmethod
-    def _psutil_other_temps():
-        out = []
-        try:
-            for chip, temps in (psutil.sensors_temperatures() or {}).items():
-                if chip in ("coretemp", "k10temp"):
-                    continue
-                for i, t in enumerate(temps):
-                    out.append({"name": t.label or "%s %d" % (chip, i + 1), "value": t.current})
-        except Exception:
-            pass
-        return _dedupe(out)

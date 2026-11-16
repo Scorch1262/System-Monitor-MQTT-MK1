@@ -192,3 +192,6 @@ input[type=checkbox] { accent-color: var(--amber); width: 15px; height: 15px; }
   padding: 10px 14px; border-radius: 4px; font: 12px var(--mono); max-width: 420px;
   box-shadow: 0 6px 24px rgba(0, 0, 0, .5);
 }
+
+body.linux .win-only { display: none !important; }
+body:not(.linux) .linux-only { display: none !important; }
