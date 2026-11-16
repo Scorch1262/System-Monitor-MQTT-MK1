@@ -2,12 +2,20 @@
 # System-Monitor-MQTT-MK1 – Installation unter Linux
 #   GL.iNet Brume 2 / OpenWrt  -> /root/System-Monitor-MQTT-MK1, Dienst über procd
 #   Raspberry Pi / Debian      -> /opt/System-Monitor-MQTT-MK1,  Dienst über systemd
-# Aufruf: sh install.sh   (als root; auf dem Raspberry: sudo sh install.sh)
+#
+# Aufruf aus dem Repo / der Zip:   sh install.sh        (Raspberry: sudo sh install.sh)
+# Direkt aus GitHub (ohne git):    wget -qO- https://raw.githubusercontent.com/Scorch1262/System-Monitor-MQTT-MK1/main/install.sh | sh
+#   Liegt kein main.py neben install.sh, wird der aktuelle Stand des Repos heruntergeladen.
 # Ein erneuter Aufruf aktualisiert das Programm, die Einstellungen bleiben erhalten.
 
 NAME=System-Monitor-MQTT-MK1
 SERVICE=system-monitor-mqtt
-SRC=$(cd "$(dirname "$0")" && pwd)
+REPO=${REPO:-Scorch1262/System-Monitor-MQTT-MK1}
+BRANCH=${BRANCH:-main}
+SRC=$(cd "$(dirname "$0")" 2>/dev/null && pwd)
+case "$0" in
+    sh|-sh|ash|-ash|bash|-bash|*/sh|*/ash|*/bash) SRC="" ;;  # per Pipe gestartet -> immer aus GitHub laden
+esac
 
 say() { echo "[$NAME] $*"; }
 fail() { echo "[$NAME] FEHLER: $*" >&2; exit 1; }
@@ -22,6 +30,25 @@ else
     TARGET=/opt/$NAME
 fi
 say "System: $SYS, Zielordner: $TARGET"
+
+# ---------------------------------------------------------------- Quellcode aus GitHub holen
+if [ ! -f "$SRC/main.py" ] || [ ! -d "$SRC/app" ]; then
+    URL="https://codeload.github.com/$REPO/tar.gz/refs/heads/$BRANCH"
+    TMP=/tmp/$NAME-download
+    rm -rf "$TMP" && mkdir -p "$TMP"
+    say "Lade $REPO ($BRANCH) von GitHub ..."
+    if command -v wget >/dev/null 2>&1; then
+        wget -qO "$TMP/src.tar.gz" "$URL" || fail "Download fehlgeschlagen ($URL)"
+    elif command -v curl >/dev/null 2>&1; then
+        curl -fsSL -o "$TMP/src.tar.gz" "$URL" || fail "Download fehlgeschlagen ($URL)"
+    else
+        fail "weder wget noch curl vorhanden"
+    fi
+    tar -xzf "$TMP/src.tar.gz" -C "$TMP" || fail "Entpacken fehlgeschlagen"
+    SRC=$(ls -d "$TMP"/*/ | head -n 1)
+    SRC=${SRC%/}
+    [ -f "$SRC/main.py" ] || fail "main.py nicht im Download gefunden"
+fi
 
 # ---------------------------------------------------------------- Python 3
 py_ok() {
@@ -125,5 +152,6 @@ fi
 
 IP=$(ip -4 addr show scope global 2>/dev/null | sed -n 's/.*inet \([0-9.]*\).*/\1/p' | head -n 1)
 [ -n "$IP" ] || IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+rm -rf /tmp/$NAME-download
 sleep 2
 say "Fertig. Webseite: http://${IP:-<IP-Adresse>}:$PORT/"

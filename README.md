@@ -1,6 +1,6 @@
 # System-Monitor-MQTT-MK1
 
-**Version 1.1.0**
+**Version 1.1.1**
 
 Kleines Programm, das im Hintergrund läuft und die Systemauslastung regelmäßig an einen
 MQTT-Broker sendet. Eingestellt wird alles über eine Webseite im Dashboard-Design
@@ -55,26 +55,35 @@ zeigt eine Live-Vorschau aller Nachrichten.
 
 ## Installation unter Linux (Brume 2 / Raspberry Pi)
 
-Zip `System-Monitor-MQTT-MK1-vX.Y.Z-linux.zip` (aus dem Release oder diesem Repo) auf das Gerät kopieren
-und dort entpacken; `install.sh` erledigt den Rest (Python prüfen, Dienst mit Autostart einrichten,
-auf OpenWrt zusätzlich eine Firewall-Regel für den Webport).
+Windows- und Linux-Version liegen im selben Repo und teilen sich den Code (`main.py`, `app/`, `web/`).
+Für Linux ist kein Build nötig; `install.sh` prüft Python, kopiert das Programm, richtet den Dienst
+mit Autostart ein und setzt auf OpenWrt eine Firewall-Regel für den Webport.
 
-**GL.iNet Brume 2** (scp funktioniert dort nur mit `-O`):
-
-```
-scp -O System-Monitor-MQTT-MK1-v1.1.0-linux.zip root@192.168.8.1:/root/
-ssh root@192.168.8.1
-cd /root && unzip -o System-Monitor-MQTT-MK1-v1.1.0-linux.zip
-sh System-Monitor-MQTT-MK1/install.sh
-```
-
-**Raspberry Pi:**
+**Variante A – direkt aus GitHub (ohne git, ideal für den Brume 2):**
 
 ```
-scp System-Monitor-MQTT-MK1-v1.1.0-linux.zip pi@raspberrypi:~
-ssh pi@raspberrypi
-unzip -o System-Monitor-MQTT-MK1-v1.1.0-linux.zip
+wget -qO- https://raw.githubusercontent.com/Scorch1262/System-Monitor-MQTT-MK1/main/install.sh | sh
+```
+
+Auf dem Raspberry mit `| sudo sh` am Ende. Liegt das Repo unter einem anderen Namen:
+`... | REPO=Benutzer/Repo sh`. Derselbe Befehl aktualisiert später auf den neuesten Stand.
+
+**Variante B – Repo klonen (Raspberry Pi):**
+
+```
+git clone https://github.com/Scorch1262/System-Monitor-MQTT-MK1.git
 sudo sh System-Monitor-MQTT-MK1/install.sh
+```
+
+Update: `git pull` im geklonten Ordner und `install.sh` erneut ausführen.
+
+**Variante C – offline per Zip** (Release-Datei `…-linux.zip` oder Repo-Zip; Brume 2: scp nur mit `-O`):
+
+```
+scp -O System-Monitor-MQTT-MK1-v1.1.1-linux.zip root@192.168.8.1:/root/
+ssh root@192.168.8.1
+cd /root && unzip -o System-Monitor-MQTT-MK1-v1.1.1-linux.zip
+sh System-Monitor-MQTT-MK1/install.sh
 ```
 
 Danach ist die Webseite unter `http://<IP-des-Geräts>:8095/` erreichbar (unter Linux standardmäßig
@@ -171,6 +180,10 @@ System-Monitor-MQTT-MK1.spec   PyInstaller-Spezifikation
 ```
 
 ## Änderungen
+
+### 1.1.1
+- Linux-Installation direkt aus dem Repo: `install.sh` lädt den Code selbst von GitHub, wenn er per Einzeiler (`wget … | sh`) gestartet wird
+- README: drei Installationswege (GitHub-Einzeiler, git clone, Zip)
 
 ### 1.1.0
 - Linux-Unterstützung: GL.iNet Brume 2 (OpenWrt/procd) und Raspberry Pi (systemd) mit `install.sh`
