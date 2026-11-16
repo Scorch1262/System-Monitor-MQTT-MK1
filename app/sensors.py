@@ -94,6 +94,26 @@ def cpu_name_fallback():
     return platform.processor() or "CPU"
 
 
+def unblock_files(folder):
+    """Entfernt die Windows-Internet-Markierung (Zone.Identifier) von DLL/EXE-Dateien.
+
+    Gelingt nur mit Schreibrecht (z. B. nicht in C:\\Program Files ohne Adminrechte) -
+    dafür sorgt zusätzlich assets/netfx.config.
+    """
+    if not IS_WINDOWS:
+        return 0
+    n = 0
+    for dirpath, _dirs, files in os.walk(folder):
+        for f in files:
+            if f.lower().endswith((".dll", ".exe")):
+                try:
+                    os.remove(os.path.join(dirpath, f) + ":Zone.Identifier")
+                    n += 1
+                except OSError:
+                    pass
+    return n
+
+
 # --------------------------------------------------------------------------- LHM
 class LhmProvider:
     def __init__(self, folder):
@@ -114,11 +134,18 @@ class LhmProvider:
             log.warning(self.status + " (%s)", dll)
             return
         try:
-            try:
-                import pythonnet
-                pythonnet.load("netfx")
-            except Exception:
-                pass  # bereits geladen oder Standard-Runtime
+            base = os.path.dirname(os.path.abspath(self.folder))
+            removed = unblock_files(base)
+            if removed:
+                log.info("Internet-Markierung von %d Dateien entfernt", removed)
+            import pythonnet
+            if pythonnet.get_runtime_info() is None:
+                cfg = os.path.join(base, "assets", "netfx.config")
+                if os.path.isfile(cfg):
+                    # eigene AppDomain mit loadFromRemoteSources=true (siehe assets/netfx.config)
+                    pythonnet.load("netfx", domain="SystemMonitorMQTT", config_file=cfg)
+                else:
+                    pythonnet.load("netfx")
             import clr  # noqa: F401
             from System import AppDomain, ResolveEventHandler
             from System.Reflection import Assembly, AssemblyName

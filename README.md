@@ -1,6 +1,6 @@
 # System-Monitor-MQTT-MK1
 
-**Version 1.4.0**
+**Version 1.4.1**
 
 Kleines Programm, das im Hintergrund läuft und die Systemauslastung regelmäßig an einen
 MQTT-Broker sendet. Eingestellt wird alles über eine Webseite im Dashboard-Design
@@ -80,9 +80,9 @@ Update: `git pull` im geklonten Ordner und `install.sh` erneut ausführen.
 **Variante C – offline per Zip** (Release-Datei `…-linux.zip` oder Repo-Zip; Brume 2: scp nur mit `-O`):
 
 ```
-scp -O System-Monitor-MQTT-MK1-v1.4.0-linux.zip root@192.168.8.1:/root/
+scp -O System-Monitor-MQTT-MK1-v1.4.1-linux.zip root@192.168.8.1:/root/
 ssh root@192.168.8.1
-cd /root && unzip -o System-Monitor-MQTT-MK1-v1.4.0-linux.zip
+cd /root && unzip -o System-Monitor-MQTT-MK1-v1.4.1-linux.zip
 sh System-Monitor-MQTT-MK1/install.sh
 ```
 
@@ -244,6 +244,9 @@ System-Monitor-MQTT-MK1.spec   PyInstaller-Spezifikation
 ```
 
 ## Änderungen
+
+### 1.4.1
+- Fix „Failed to resolve Python.Runtime.Loader.Initialize“: DLLs mit Windows-Internet-Markierung (Zip im Explorer entpackt) werden jetzt geladen – eigene .NET-AppDomain mit `loadFromRemoteSources`, zusätzlich Entfernen der Markierung, wo Schreibrecht besteht
 
 ### 1.4.0
 - Weniger Fehlalarme im Windows Defender: Ordner-Build statt selbstentpackender Einzel-exe, selbst kompilierter PyInstaller-Bootloader
