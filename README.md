@@ -1,6 +1,6 @@
 # System-Monitor-MQTT-MK1
 
-**Version 1.3.0**
+**Version 1.3.1**
 
 Kleines Programm, das im Hintergrund läuft und die Systemauslastung regelmäßig an einen
 MQTT-Broker sendet. Eingestellt wird alles über eine Webseite im Dashboard-Design
@@ -80,9 +80,9 @@ Update: `git pull` im geklonten Ordner und `install.sh` erneut ausführen.
 **Variante C – offline per Zip** (Release-Datei `…-linux.zip` oder Repo-Zip; Brume 2: scp nur mit `-O`):
 
 ```
-scp -O System-Monitor-MQTT-MK1-v1.3.0-linux.zip root@192.168.8.1:/root/
+scp -O System-Monitor-MQTT-MK1-v1.3.1-linux.zip root@192.168.8.1:/root/
 ssh root@192.168.8.1
-cd /root && unzip -o System-Monitor-MQTT-MK1-v1.3.0-linux.zip
+cd /root && unzip -o System-Monitor-MQTT-MK1-v1.3.1-linux.zip
 sh System-Monitor-MQTT-MK1/install.sh
 ```
 
@@ -143,6 +143,11 @@ erscheint oben auf der Übersicht ein Hinweis mit **„Jetzt aktualisieren“** 
 |---|---|
 | Windows (exe) | lädt `…-windows.zip` aus dem Release, benennt die laufende exe in `.old` um, legt die neue exe an ihre Stelle, startet sie und beendet sich; die `.old` wird danach gelöscht. Autostart und Einstellungen bleiben unverändert. |
 | Linux (Brume 2, Raspberry) | lädt den Quellcode des Release-Tags, ersetzt `app/`, `web/`, `assets/`, `main.py`, `install.sh`, `uninstall.sh` und startet sich neu. Die JSON-Einstellungen bleiben erhalten. |
+
+Die Prüfung nutzt **nicht** die GitHub-API (ohne Anmeldung nur 60 Abfragen pro Stunde je
+öffentlicher IP – mit mehreren Geräten im Netz schnell aufgebraucht), sondern die normale
+Release-Seite: Weiterleitung von `releases/latest` auf den neuesten Tag, Notizen aus dem
+Abschnitt „Änderungen“ dieser README, Downloads über `releases/download` bzw. `codeload`.
 
 Voraussetzung: ein **Release** mit höherer Versionsnummer – der Workflow erstellt es automatisch,
 sobald `VERSION` in `app/version.py` erhöht wurde. Liegt die exe in einem Ordner ohne
@@ -212,6 +217,10 @@ System-Monitor-MQTT-MK1.spec   PyInstaller-Spezifikation
 ```
 
 ## Änderungen
+
+### 1.3.1
+- Update-Prüfung ohne GitHub-API: behebt „HTTP Error 403: rate limit exceeded“
+- Release-Notizen kommen aus dem Änderungsteil der README des neuen Tags
 
 ### 1.3.0
 - Webseite auch unter Windows standardmäßig für alle im Netzwerk sichtbar (bestehende Einstellungen werden umgestellt)

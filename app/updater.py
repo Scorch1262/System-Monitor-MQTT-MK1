@@ -1,13 +1,19 @@
 """Update-Funktion über GitHub-Releases (Scorch1262/System-Monitor-MQTT-MK1).
 
+Ohne GitHub-API (die erlaubt ohne Anmeldung nur 60 Abfragen/Stunde je IP):
+  neueste Version  -> Weiterleitung von github.com/<repo>/releases/latest auf .../tag/vX.Y.Z
+  Notizen          -> Abschnitt "### X.Y.Z" aus README.md des Tags (raw.githubusercontent.com)
+  Windows-exe      -> github.com/<repo>/releases/download/vX.Y.Z/System-Monitor-MQTT-MK1-vX.Y.Z-windows.zip
+  Quellcode        -> codeload.github.com/<repo>/tar.gz/refs/tags/vX.Y.Z
+
 Windows (exe):    lädt das Release-Asset "...-windows.zip", benennt die laufende exe in
                   ".old" um (unter Windows erlaubt), legt die neue exe an ihre Stelle und startet sie.
 Linux / Quellcode: lädt den Quellcode des Release-Tags, ersetzt app/, web/, assets/, main.py,
                   install.sh, uninstall.sh und startet das Programm neu (os.execv). Die
                   Einstellungen (JSON) bleiben erhalten.
 """
+import http.client
 import io
-import json
 import logging
 import os
 import re
@@ -18,6 +24,7 @@ import sys
 import tempfile
 import threading
 import time
+import urllib.parse
 import urllib.request
 import zipfile
 
@@ -57,6 +64,41 @@ def _explain(e):
     if "CERTIFICATE_VERIFY_FAILED" in msg:
         return msg + " – Stammzertifikate fehlen (OpenWrt: opkg install ca-bundle)"
     return msg
+
+
+def _bases():
+    """Basis-Adressen; SYSMON_UPDATE_BASE ersetzt alle drei (Test/Spiegelserver)."""
+    b = os.environ.get("SYSMON_UPDATE_BASE", "").rstrip("/")
+    if b:
+        return b, b + "/raw", b + "/codeload"
+    return "https://github.com", "https://raw.githubusercontent.com", "https://codeload.github.com"
+
+
+def _redirect_target(url, timeout=15):
+    """Fragt eine Adresse ab, ohne der Weiterleitung zu folgen, und liefert das Ziel (Location)."""
+    u = urllib.parse.urlsplit(url)
+    if u.scheme == "https":
+        conn = http.client.HTTPSConnection(u.hostname, u.port or 443, timeout=timeout, context=_ssl_context())
+    else:
+        conn = http.client.HTTPConnection(u.hostname, u.port or 80, timeout=timeout)
+    try:
+        conn.request("HEAD", u.path or "/", headers={"User-Agent": "%s/%s" % (APP_NAME, VERSION)})
+        r = conn.getresponse()
+        r.read()
+        if r.status in (301, 302, 303, 307, 308):
+            return urllib.parse.urljoin(url, r.getheader("Location") or "")
+        if r.status == 404:
+            raise RuntimeError("Repo nicht gefunden (HTTP 404)")
+        raise RuntimeError("Unerwartete Antwort von GitHub: HTTP %d" % r.status)
+    finally:
+        conn.close()
+
+
+def _release_notes(readme, version):
+    """Abschnitt "### <version>" aus dem Änderungsteil der README."""
+    v = version.lstrip("vV")
+    m = re.search(r"^###\s+v?%s\s*$(.*?)(?=^###\s|^##\s|\Z)" % re.escape(v), readme, re.M | re.S)
+    return m.group(1).strip() if m else ""
 
 
 def _http_get(url, timeout=30, accept=None):
@@ -135,18 +177,36 @@ class Updater:
                 return
 
     def check(self):
-        api_base = os.environ.get("SYSMON_UPDATE_API", "https://api.github.com").rstrip("/")  # Test/Mirror
-        url = "%s/repos/%s/releases/latest" % (api_base, self.repo)
+        web, raw, codeload = _bases()
+        repo = self.repo
         try:
-            data = json.loads(_http_get(url, timeout=15, accept="application/vnd.github+json").decode("utf-8"))
-            self.latest = data
+            target = _redirect_target("%s/%s/releases/latest" % (web, repo))
+            m = re.search(r"/releases/tag/([^/?#]+)$", target)
+            if not m:
+                raise RuntimeError("Kein Release im Repo %s gefunden" % repo)
+            tag = urllib.parse.unquote(m.group(1))
+            ver = tag.lstrip("vV")
+            asset = "%s-v%s-windows.zip" % (APP_NAME, ver)
+            notes = ""
+            try:
+                readme = _http_get("%s/%s/%s/README.md" % (raw, repo, tag), timeout=15).decode("utf-8", "replace")
+                notes = _release_notes(readme, ver)
+            except Exception as e:
+                log.info("Release-Notizen nicht geladen: %s", e)
+            self.latest = {
+                "tag_name": tag,
+                "name": "%s %s" % (APP_NAME, tag),
+                "body": notes,
+                "html_url": "%s/%s/releases/tag/%s" % (web, repo, tag),
+                "published_at": None,
+                "tarball_url": "%s/%s/tar.gz/refs/tags/%s" % (codeload, repo, tag),
+                "assets": [{"name": asset,
+                            "browser_download_url": "%s/%s/releases/download/%s/%s" % (web, repo, tag, asset)}],
+            }
             self.error = ""
-            log.info("Update-Prüfung: aktuell %s, neuestes Release %s", VERSION, data.get("tag_name"))
+            log.info("Update-Prüfung: aktuell %s, neuestes Release %s", VERSION, tag)
         except Exception as e:
-            msg = _explain(e)
-            if "404" in msg:
-                msg = "Kein Release im Repo %s gefunden" % self.repo
-            self.error = "Prüfung fehlgeschlagen: %s" % msg
+            self.error = "Prüfung fehlgeschlagen: %s" % _explain(e)
             log.warning(self.error)
         self.checked_at = time.time()
         return self.status()
@@ -193,7 +253,12 @@ class Updater:
             raise RuntimeError("Kein Schreibrecht im Programmordner %s – als Administrator starten" % folder)
 
         self.progress = "lade %s" % asset["name"]
-        data = _http_get(asset["browser_download_url"], timeout=300)
+        try:
+            data = _http_get(asset["browser_download_url"], timeout=300)
+        except Exception as e:
+            if "404" in str(e):
+                raise RuntimeError("%s ist (noch) nicht im Release – läuft der Build noch?" % asset["name"])
+            raise
         self.progress = "entpacke"
         with zipfile.ZipFile(io.BytesIO(data)) as z:
             name = next((n for n in z.namelist() if n.lower().endswith(".exe")), None)
