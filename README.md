@@ -1,6 +1,6 @@
 # System-Monitor-MQTT-MK1
 
-**Version 1.3.1**
+**Version 1.4.0**
 
 Kleines Programm, das im Hintergrund läuft und die Systemauslastung regelmäßig an einen
 MQTT-Broker sendet. Eingestellt wird alles über eine Webseite im Dashboard-Design
@@ -8,7 +8,7 @@ MQTT-Broker sendet. Eingestellt wird alles über eine Webseite im Dashboard-Desi
 
 | Plattform | Form | Zusatzinstallation |
 |---|---|---|
-| Windows 10/11 | eine exe, läuft im Infobereich (Tray) | keine – Sensortreiber wird automatisch mitinstalliert |
+| Windows 10/11 | Programmordner mit exe, läuft im Infobereich (Tray) | keine – Sensortreiber wird automatisch mitinstalliert |
 | GL.iNet Brume 2 (OpenWrt) | Dienst (procd), Ordner `/root/System-Monitor-MQTT-MK1` | nur `python3` (installiert `install.sh` bei Bedarf selbst) |
 | Raspberry Pi / Debian / Ubuntu | Dienst (systemd), Ordner `/opt/System-Monitor-MQTT-MK1` | keine (`python3` ist vorhanden) |
 
@@ -80,9 +80,9 @@ Update: `git pull` im geklonten Ordner und `install.sh` erneut ausführen.
 **Variante C – offline per Zip** (Release-Datei `…-linux.zip` oder Repo-Zip; Brume 2: scp nur mit `-O`):
 
 ```
-scp -O System-Monitor-MQTT-MK1-v1.3.1-linux.zip root@192.168.8.1:/root/
+scp -O System-Monitor-MQTT-MK1-v1.4.0-linux.zip root@192.168.8.1:/root/
 ssh root@192.168.8.1
-cd /root && unzip -o System-Monitor-MQTT-MK1-v1.3.1-linux.zip
+cd /root && unzip -o System-Monitor-MQTT-MK1-v1.4.0-linux.zip
 sh System-Monitor-MQTT-MK1/install.sh
 ```
 
@@ -98,7 +98,9 @@ Protokoll auf OpenWrt nach `/tmp` (schont den Flash).
 
 ## Bedienung unter Windows
 
-1. `System-Monitor-MQTT-MK1.exe` starten – beim ersten Start öffnet sich die Webseite
+1. `…-windows-x64.zip` aus dem Release entpacken (z. B. nach `C:\Tools\`) und im Ordner
+   `System-Monitor-MQTT-MK1` die `System-Monitor-MQTT-MK1.exe` starten – der Ordner `_internal`
+   gehört dazu und muss daneben bleiben. Beim ersten Start öffnet sich die Webseite
    `http://127.0.0.1:8095/`.
 2. Unter **Einstellungen** Broker eintragen, *Verbindung testen*, *Speichern*.
 3. Topic, Intervall und Messwerte wählen.
@@ -141,7 +143,7 @@ erscheint oben auf der Übersicht ein Hinweis mit **„Jetzt aktualisieren“** 
 
 | System | Ablauf |
 |---|---|
-| Windows (exe) | lädt `…-windows.zip` aus dem Release, benennt die laufende exe in `.old` um, legt die neue exe an ihre Stelle, startet sie und beendet sich; die `.old` wird danach gelöscht. Autostart und Einstellungen bleiben unverändert. |
+| Windows | lädt `…-windows-x64.zip`, entpackt es in `_update\`, beendet sich; die neue exe tauscht `System-Monitor-MQTT-MK1.exe` und `_internal\` im Programmordner aus und startet die neue Version (bei Fehlern wird die alte wiederhergestellt). Autostart, Firewall-Regel und Einstellungen bleiben unverändert. |
 | Linux (Brume 2, Raspberry) | lädt den Quellcode des Release-Tags, ersetzt `app/`, `web/`, `assets/`, `main.py`, `install.sh`, `uninstall.sh` und startet sich neu. Die JSON-Einstellungen bleiben erhalten. |
 
 Die Prüfung nutzt **nicht** die GitHub-API (ohne Anmeldung nur 60 Abfragen pro Stunde je
@@ -153,6 +155,31 @@ Voraussetzung: ein **Release** mit höherer Versionsnummer – der Workflow erst
 sobald `VERSION` in `app/version.py` erhöht wurde. Liegt die exe in einem Ordner ohne
 Schreibrecht (z. B. `C:\Programme`), das Programm für das Update als Administrator starten.
 Unter OpenWrt braucht HTTPS die Stammzertifikate (`ca-bundle`, installiert `install.sh` mit).
+
+## Windows Defender / SmartScreen
+
+Python-Programme, die mit PyInstaller zur exe werden, werden von Virenscannern oft fälschlich als
+verdächtig eingestuft. Ab 1.4.0 ist der Build deshalb so aufgebaut, dass die üblichen Auslöser wegfallen:
+
+- **Ordner statt Einzel-exe** – die exe entpackt sich nicht mehr bei jedem Start in einen
+  Temp-Ordner (typisches Verhalten von Schadsoftware); Treiber-Setup und DLLs liegen offen in `_internal\`.
+- **Selbst kompilierter PyInstaller-Bootloader** – der vorgefertigte Bootloader wird auch von
+  Schadsoftware benutzt und ist deshalb bei vielen Scannern „vorbelastet“.
+- kein UPX-Packer, vollständige Versionsinformationen in der exe.
+
+Bleibt eine Meldung, hilft:
+1. **Fehlalarm an Microsoft melden**: <https://www.microsoft.com/wdsi/filesubmission> → „Software
+   developer“, die exe hochladen. Nach der Prüfung (meist 1–3 Tage) wird die Signatur angepasst.
+2. **Code-Signatur** (dauerhafte Lösung, kostenpflichtig) – z. B. Azure Trusted Signing oder ein
+   Code-Signing-Zertifikat; der Workflow kann die exe dann direkt signieren.
+3. SmartScreen („Der Computer wurde durch Windows geschützt“) verschwindet bei unsignierten
+   Programmen erst mit Verbreitung – „Weitere Informationen → Trotzdem ausführen“.
+
+**Umstieg von 1.3.x und älter:** Diese Versionen waren eine einzelne exe und können sich nicht
+selbst auf das Ordner-Paket aktualisieren (sie finden das neue Paket absichtlich nicht). Einmalig
+von Hand: Programm beenden, alte exe löschen, Ordner aus der Zip an dieselbe Stelle entpacken und
+die `System-Monitor-MQTT-MK1.json` in den neuen Ordner kopieren. Autostart danach in den
+Einstellungen einmal neu wählen (der Pfad der exe hat sich geändert).
 
 ## Dateien neben der exe
 
@@ -187,7 +214,7 @@ Inhalt dieses Ordners in ein GitHub-Repository schieben. Der Workflow
 
 1. lädt `LibreHardwareMonitorLib` (NuGet, .NET Framework 4.7.2) über `lhm/LhmDeps.csproj`
 2. lädt das aktuelle PawnIO-Setup aus `namazso/PawnIO.Setup` (wird in die exe gepackt)
-3. installiert die Python-Pakete und baut mit PyInstaller eine einzelne exe ohne Konsole
+3. kompiliert den PyInstaller-Bootloader selbst und baut einen Programmordner (exe + `_internal`) ohne Konsole
 4. lädt die exe als Artefakt hoch
 5. erstellt ein **Release** `vX.Y.Z` mit Windows-Zip **und Linux-Zip**, sobald `VERSION` in
    `app/version.py` erhöht wurde
@@ -217,6 +244,12 @@ System-Monitor-MQTT-MK1.spec   PyInstaller-Spezifikation
 ```
 
 ## Änderungen
+
+### 1.4.0
+- Weniger Fehlalarme im Windows Defender: Ordner-Build statt selbstentpackender Einzel-exe, selbst kompilierter PyInstaller-Bootloader
+- Release-Paket heißt jetzt `…-windows-x64.zip` und enthält den Programmordner
+- Update-Funktion tauscht unter Windows den ganzen Programmordner (mit Wiederherstellung bei Fehlern)
+- Einmaliger manueller Umstieg von 1.3.x nötig (siehe „Windows Defender / SmartScreen“)
 
 ### 1.3.1
 - Update-Prüfung ohne GitHub-API: behebt „HTTP Error 403: rate limit exceeded“

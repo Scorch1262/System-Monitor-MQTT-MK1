@@ -3,11 +3,12 @@
 Ohne GitHub-API (die erlaubt ohne Anmeldung nur 60 Abfragen/Stunde je IP):
   neueste Version  -> Weiterleitung von github.com/<repo>/releases/latest auf .../tag/vX.Y.Z
   Notizen          -> Abschnitt "### X.Y.Z" aus README.md des Tags (raw.githubusercontent.com)
-  Windows-exe      -> github.com/<repo>/releases/download/vX.Y.Z/System-Monitor-MQTT-MK1-vX.Y.Z-windows.zip
+  Windows          -> github.com/<repo>/releases/download/vX.Y.Z/System-Monitor-MQTT-MK1-vX.Y.Z-windows-x64.zip
   Quellcode        -> codeload.github.com/<repo>/tar.gz/refs/tags/vX.Y.Z
 
-Windows (exe):    lädt das Release-Asset "...-windows.zip", benennt die laufende exe in
-                  ".old" um (unter Windows erlaubt), legt die neue exe an ihre Stelle und startet sie.
+Windows (Ordner): lädt "...-windows-x64.zip" (exe + _internal), entpackt es nach <Programmordner>/_update,
+                  startet die neue exe dort mit "--apply-update"; diese wartet, bis das alte Programm
+                  beendet ist, tauscht exe und _internal im Programmordner aus und startet die neue Version.
 Linux / Quellcode: lädt den Quellcode des Release-Tags, ersetzt app/, web/, assets/, main.py,
                   install.sh, uninstall.sh und startet das Programm neu (os.execv). Die
                   Einstellungen (JSON) bleiben erhalten.
@@ -186,7 +187,7 @@ class Updater:
                 raise RuntimeError("Kein Release im Repo %s gefunden" % repo)
             tag = urllib.parse.unquote(m.group(1))
             ver = tag.lstrip("vV")
-            asset = "%s-v%s-windows.zip" % (APP_NAME, ver)
+            asset = "%s-v%s-windows-x64.zip" % (APP_NAME, ver)
             notes = ""
             try:
                 readme = _http_get("%s/%s/%s/README.md" % (raw, repo, tag), timeout=15).decode("utf-8", "replace")
@@ -244,9 +245,9 @@ class Updater:
     # ---- Windows-exe
     def _install_exe(self):
         rel = self.latest
-        asset = next((a for a in rel.get("assets", []) if a.get("name", "").lower().endswith("-windows.zip")), None)
+        asset = next((a for a in rel.get("assets", []) if a.get("name", "").lower().endswith("-windows-x64.zip")), None)
         if not asset:
-            raise RuntimeError("Release %s enthält keine Windows-Zip" % rel.get("tag_name"))
+            raise RuntimeError("Release %s enthält kein Windows-Paket" % rel.get("tag_name"))
         exe = os.path.abspath(sys.executable)
         folder = os.path.dirname(exe)
         if not os.access(folder, os.W_OK):
@@ -260,43 +261,28 @@ class Updater:
                 raise RuntimeError("%s ist (noch) nicht im Release – läuft der Build noch?" % asset["name"])
             raise
         self.progress = "entpacke"
+        stage = os.path.join(folder, UPDATE_DIR)
+        shutil.rmtree(stage, ignore_errors=True)
+        os.makedirs(stage)
         with zipfile.ZipFile(io.BytesIO(data)) as z:
-            name = next((n for n in z.namelist() if n.lower().endswith(".exe")), None)
-            if not name:
-                raise RuntimeError("Keine exe in der Zip gefunden")
-            new_bytes = z.read(name)
-        if len(new_bytes) < 1_000_000 or new_bytes[:2] != b"MZ":
-            raise RuntimeError("Heruntergeladene exe ist ungültig")
+            base = os.path.realpath(stage)
+            for n in z.namelist():
+                p = os.path.realpath(os.path.join(stage, n))
+                if not (p == base or p.startswith(base + os.sep)):
+                    raise RuntimeError("Unsicherer Pfad im Paket: %s" % n)
+            z.extractall(stage)
+        new_exe = _find_app_exe(stage)
+        if not new_exe:
+            raise RuntimeError("Paket enthält keine %s.exe mit _internal-Ordner" % APP_NAME)
+        with open(new_exe, "rb") as f:
+            if f.read(2) != b"MZ":
+                raise RuntimeError("Heruntergeladene exe ist ungültig")
 
-        new_path = exe + ".new"
-        old_path = exe + ".old"
-        with open(new_path, "wb") as f:
-            f.write(new_bytes)
-        self.progress = "tausche exe"
-        if os.path.exists(old_path):
-            try:
-                os.remove(old_path)
-            except OSError:
-                old_path = exe + ".%d.old" % int(time.time())
-        os.replace(exe, old_path)           # laufende exe darf umbenannt werden
-        try:
-            os.replace(new_path, exe)
-        except Exception:
-            os.replace(old_path, exe)       # zurückrollen
-            raise
-
-        self.progress = "starte neue Version"
-        env = {k: v for k, v in os.environ.items()
-               if not k.startswith("_PYI_") and not k.startswith("_MEIPASS")}
-        env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
-        flags = 0x00000008 | 0x00000200  # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
-        try:
-            subprocess.Popen([exe, "--updated"], env=env, cwd=folder, close_fds=True, creationflags=flags)
-        except Exception:
-            os.replace(exe, new_path)
-            os.replace(old_path, exe)
-            raise
-        log.info("Update auf %s installiert - Neustart", self.latest.get("tag_name"))
+        self.progress = "starte Austausch"
+        subprocess.Popen([new_exe, "--apply-update", folder, "--wait-pid", str(os.getpid())],
+                         env=_clean_env(), cwd=os.path.dirname(new_exe), close_fds=True,
+                         creationflags=DETACHED)
+        log.info("Update auf %s vorbereitet - Programm beendet sich für den Austausch", rel.get("tag_name"))
         threading.Timer(0.5, self.ctrl.quit).start()
 
     # ---- Quellcode (Linux, auch Windows ohne exe)
@@ -370,8 +356,92 @@ class Updater:
             subprocess.run(["tar", "-xzf", archive, "-C", out], check=True)
 
 
+UPDATE_DIR = "_update"
+DETACHED = 0x00000008 | 0x00000200  # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+
+
+def _clean_env():
+    """Umgebung ohne PyInstaller-Variablen des laufenden Programms."""
+    env = {k: v for k, v in os.environ.items() if not k.startswith("_PYI_") and not k.startswith("_MEIPASS")}
+    env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+    return env
+
+
+def _find_app_exe(root):
+    for dirpath, dirnames, filenames in os.walk(root):
+        if APP_NAME + ".exe" in filenames and "_internal" in dirnames:
+            return os.path.join(dirpath, APP_NAME + ".exe")
+    return None
+
+
+def _retry(fn, tries=20, delay=0.5):
+    for i in range(tries):
+        try:
+            return fn()
+        except OSError:
+            if i == tries - 1:
+                raise
+            time.sleep(delay)
+
+
+def apply_update(target, wait_pid):
+    """Läuft in der NEUEN exe (aus <target>/_update/...): Dateien in den Programmordner kopieren."""
+    import logging.handlers
+    log_path = os.path.join(target, APP_NAME + ".log")
+    try:
+        h = logging.handlers.RotatingFileHandler(log_path, maxBytes=1_000_000, backupCount=2, encoding="utf-8")
+        h.setFormatter(logging.Formatter("%(asctime)s %(levelname)-7s update: %(message)s"))
+        logging.getLogger().addHandler(h)
+        logging.getLogger().setLevel(logging.INFO)
+    except OSError:
+        pass
+    src = os.path.dirname(os.path.abspath(sys.executable))
+    log.info("Update-Austausch: %s -> %s (warte auf Prozess %s)", src, target, wait_pid)
+
+    # 1. Warten, bis die alte Version beendet ist
+    try:
+        import psutil
+        try:
+            psutil.Process(int(wait_pid)).wait(timeout=60)
+        except psutil.NoSuchProcess:
+            pass
+    except Exception as e:
+        log.warning("Warten auf alten Prozess: %s", e)
+        time.sleep(5)
+    time.sleep(1.0)
+
+    # 2. Austausch: _internal komplett, exe und Begleitdateien
+    t_int, t_old = os.path.join(target, "_internal"), os.path.join(target, "_internal.old")
+    t_exe = os.path.join(target, APP_NAME + ".exe")
+    ok = False
+    try:
+        shutil.rmtree(t_old, ignore_errors=True)
+        if os.path.isdir(t_int):
+            _retry(lambda: os.rename(t_int, t_old))
+        shutil.copytree(os.path.join(src, "_internal"), t_int)
+        _retry(lambda: shutil.copy2(os.path.join(src, APP_NAME + ".exe"), t_exe))
+        for name in os.listdir(src):
+            p = os.path.join(src, name)
+            if os.path.isfile(p) and not name.lower().endswith((".exe", ".json", ".log")):
+                shutil.copy2(p, os.path.join(target, name))
+        ok = True
+        log.info("Update-Austausch erfolgreich")
+    except Exception:
+        log.exception("Update-Austausch fehlgeschlagen - stelle alte Version wieder her")
+        try:
+            if os.path.isdir(t_old):
+                shutil.rmtree(t_int, ignore_errors=True)
+                os.rename(t_old, t_int)
+        except OSError:
+            log.exception("Wiederherstellen fehlgeschlagen")
+
+    # 3. Programm im Programmordner starten (neue oder wiederhergestellte Version)
+    subprocess.Popen([t_exe, "--updated"] if ok else [t_exe], env=_clean_env(), cwd=target,
+                     close_fds=True, creationflags=DETACHED)
+
+
 def cleanup_old_exe():
-    """Nach einem Windows-Update die alte exe löschen (sobald sie nicht mehr läuft)."""
+    """Nach einem Windows-Update Reste löschen (_update-Ordner, _internal.old, alte .old-exe)."""
     if not (IS_WINDOWS and FROZEN):
         return
     folder = os.path.dirname(os.path.abspath(sys.executable))
@@ -379,13 +449,17 @@ def cleanup_old_exe():
 
     def work():
         for _ in range(30):
-            left = 0
+            left = []
             for n in os.listdir(folder):
-                if n.startswith(base) and n.endswith(".old"):
+                p = os.path.join(folder, n)
+                if n in (UPDATE_DIR, "_internal.old") or (n.startswith(base) and n.endswith(".old")):
                     try:
-                        os.remove(os.path.join(folder, n))
+                        if os.path.isdir(p):
+                            shutil.rmtree(p)
+                        else:
+                            os.remove(p)
                     except OSError:
-                        left += 1
+                        left.append(n)
             if not left:
                 return
             time.sleep(2)

@@ -409,7 +409,7 @@ function renderUpdate(u) {
   setV("u-latest", u.latest || "–", u.available ? "hot" : "");
   setV("u-date", u.published ? new Date(u.published).toLocaleDateString("de-DE") : "–");
   setV("u-checked", u.checked_at ? new Date(u.checked_at * 1000).toLocaleString("de-DE") : "noch nicht");
-  setV("u-mode", u.mode === "exe" ? "exe austauschen" : u.mode === "source" ? "Programmdateien ersetzen" : "nicht unterstützt");
+  setV("u-mode", u.mode === "exe" ? "Programmordner austauschen" : u.mode === "source" ? "Programmdateien ersetzen" : "nicht unterstützt");
   const m = $("u-msg");
   if (u.busy) { m.className = "msg"; m.textContent = "Update läuft: " + (u.progress || "…"); }
   else if (u.error) { m.className = "msg err"; m.textContent = u.error; }

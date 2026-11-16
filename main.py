@@ -17,7 +17,7 @@ import webbrowser
 from app.config import Config, log_dir, resource_dir
 from app.sensors import IS_WINDOWS, SensorHub
 from app.mqtt_pub import MqttPublisher
-from app.updater import Updater, cleanup_old_exe
+from app.updater import Updater, apply_update, cleanup_old_exe
 from app.version import APP_NAME, APP_TITLE, VERSION
 from app.webserver import WebServer
 
@@ -272,7 +272,13 @@ def main():
     parser.add_argument("--no-browser", action="store_true")
     parser.add_argument("--service", action="store_true", help="Betrieb als Linux-Dienst (procd/systemd)")
     parser.add_argument("--updated", action="store_true", help="Start nach einem Update")
+    parser.add_argument("--apply-update", metavar="ORDNER", help=argparse.SUPPRESS)
+    parser.add_argument("--wait-pid", default="0", help=argparse.SUPPRESS)
     args, _ = parser.parse_known_args()
+
+    if args.apply_update:  # Hilfsmodus der neuen exe: Dateien austauschen, dann beenden
+        apply_update(args.apply_update, args.wait_pid)
+        return
 
     setup_logging()
     log.info("%s %s startet", APP_TITLE, VERSION)

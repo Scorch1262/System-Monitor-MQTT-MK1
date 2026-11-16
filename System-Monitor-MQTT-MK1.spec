@@ -1,5 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
-# PyInstaller-Spezifikation für System-Monitor-MQTT-MK1 (eine einzelne exe ohne Konsolenfenster)
+# PyInstaller-Spezifikation für System-Monitor-MQTT-MK1
+# Ordner-Build (onedir): exe + _internal\ statt einer selbstentpackenden Einzel-exe.
+# Einzel-exe-Builds werden vom Windows Defender deutlich häufiger fälschlich als verdächtig markiert.
 import os
 from PyInstaller.utils.hooks import collect_all
 
@@ -41,9 +43,8 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
     [],
+    exclude_binaries=True,
     name="System-Monitor-MQTT-MK1",
     console=False,
     icon="assets/icon.ico",
@@ -51,4 +52,12 @@ exe = EXE(
     upx=False,
     debug=False,
     strip=False,
+)
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=False,
+    name="System-Monitor-MQTT-MK1",
 )
