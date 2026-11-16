@@ -199,3 +199,6 @@ body:not(.linux) .linux-only { display: none !important; }
 .banner.teal { border-color: rgba(45, 212, 191, 0.4); background: var(--teal-dim); }
 .banner.teal b { color: var(--teal); }
 .version.new { color: var(--teal); border-color: rgba(45, 212, 191, 0.5); cursor: pointer; }
+
+body.readonly .edit-only { display: none !important; }
+body.readonly #view-settings input, body.readonly #view-settings select { pointer-events: none; opacity: .65; }

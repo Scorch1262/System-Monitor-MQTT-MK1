@@ -7,11 +7,26 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 
-from . import autostart
+from . import autostart, netaccess
 from .config import CORE_METRICS, DYNAMIC_GROUPS, resource_dir
 from .mqtt_pub import build_messages, test_connection
 from .sensors import IS_WINDOWS
 from .version import APP_TITLE, VERSION
+
+PASSWORD_MASK = "\u2022" * 8  # Passwort wird nie an den Browser ausgeliefert
+
+
+def masked(cfg):
+    if cfg.get("mqtt", {}).get("password"):
+        cfg["mqtt"]["password"] = PASSWORD_MASK
+    return cfg
+
+
+def unmask(data, current):
+    mq = data.get("mqtt")
+    if isinstance(mq, dict) and mq.get("password") == PASSWORD_MASK:
+        mq["password"] = current["mqtt"].get("password", "")
+    return data
 
 log = logging.getLogger(__name__)
 CONTENT_TYPES = {".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
@@ -25,11 +40,15 @@ class Api:
     def __init__(self, ctrl):
         self.ctrl = ctrl
 
-    def get(self, path):
+    def get(self, path, local=True):
         c = self.ctrl
         if path == "/api/meta":
             snap, _ = c.hub.get()
+            web = c.config.get()["web"]
             return 200, {
+                "can_edit": local or bool(web.get("remote_admin")),
+                "local_client": local,
+                "urls": ["http://%s:%d/" % (ip, web["port"]) for ip in netaccess.local_ips()] if web["lan"] else [],
                 "app": APP_TITLE, "version": VERSION, "windows": IS_WINDOWS, "service": c.service,
                 "metrics": [{"key": k, "group": g, "label": l, "unit": u} for k, g, l, u in CORE_METRICS],
                 "dynamic": [{"key": k, "label": l, "topic": t} for k, l, t in DYNAMIC_GROUPS],
@@ -49,7 +68,10 @@ class Api:
             base, msgs, _ = build_messages(snap, raw, c.config.get(), c.hub.hostname)
             return 200, {"base": base, "messages": msgs[:400], "total": len(msgs)}
         if path == "/api/config":
-            return 200, c.config.get()
+            return 200, masked(c.config.get())
+        if path == "/api/firewall":
+            web = c.config.get()["web"]
+            return 200, dict(netaccess.firewall_status(web["port"]), admin=c.hub.admin, lan=web["lan"])
         if path == "/api/update":
             return 200, c.updater.status()
         if path == "/api/autostart":
@@ -63,16 +85,20 @@ class Api:
         c = self.ctrl
         if path == "/api/config":
             old = c.config.get()
-            new = c.config.update(data)
+            new = c.config.update(unmask(data, old))
             c.publisher.apply_config()
             restart_web = old["web"]["port"] != new["web"]["port"] or old["web"]["lan"] != new["web"]["lan"]
             if restart_web:
                 if old["web"]["port"] != new["web"]["port"]:
                     autostart.openwrt_firewall_port(new["web"]["port"])
+                c.update_firewall()
                 threading.Timer(0.6, c.restart_web, args=(old["web"],)).start()
-            return 200, {"ok": True, "config": new, "web_restart": restart_web, "port": new["web"]["port"]}
+            return 200, {"ok": True, "config": masked(new), "web_restart": restart_web, "port": new["web"]["port"]}
         if path == "/api/mqtt/test":
-            mc = c.config.get()["mqtt"]
+            cur = c.config.get()
+            mc = cur["mqtt"]
+            if data.get("password") == PASSWORD_MASK:
+                data["password"] = mc.get("password", "")
             mc.update({k: v for k, v in data.items() if k in mc})
             ok, msg = test_connection(mc)
             return 200, {"ok": ok, "message": msg}
@@ -91,6 +117,12 @@ class Api:
             return 200, c.updater.check()
         if path == "/api/update/install":
             ok, msg = c.updater.install()
+            return 200, {"ok": ok, "message": msg}
+        if path == "/api/firewall":
+            if not c.hub.admin:
+                ok, msg = c.restart_as_admin(delayed=True)
+                return 200, {"ok": ok, "message": msg + " – die Firewall-Regel wird dabei angelegt" if ok else msg}
+            ok, msg = netaccess.firewall_ensure(c.config.get()["web"]["port"])
             return 200, {"ok": ok, "message": msg}
         if path == "/api/restart_admin":
             ok, msg = c.restart_as_admin(delayed=True)
@@ -141,7 +173,7 @@ def make_handler(api, web_dir, asset_dir):
                 if path == "/favicon.ico":
                     return self._file(asset_dir, "icon.ico")
                 if path.startswith("/api/"):
-                    return self._json(*api.get(path))
+                    return self._json(*api.get(path, netaccess.is_local_client(self.client_address[0])))
                 self._json(404, {"error": "nicht gefunden"})
             except (BrokenPipeError, ConnectionResetError):
                 pass
@@ -162,6 +194,10 @@ def make_handler(api, web_dir, asset_dir):
                     data = {}
                 if not isinstance(data, dict):
                     data = {}
+                if not netaccess.is_local_client(self.client_address[0]) and \
+                        not api.ctrl.config.get()["web"].get("remote_admin"):
+                    return self._json(403, {"ok": False, "error": "Nur-Lese-Zugriff: Einstellungen können nur "
+                                                                 "am PC selbst geändert werden"})
                 self._json(*api.post(path, data))
             except (BrokenPipeError, ConnectionResetError):
                 pass

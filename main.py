@@ -93,6 +93,15 @@ class Controller:
         if self.tray:
             self.tray.update_menu()
 
+    def update_firewall(self):
+        """Windows: Eingangsregel für den Webport anlegen/anpassen (nur mit Adminrechten möglich)."""
+        if not IS_WINDOWS or not self.hub.admin:
+            return
+        from app import netaccess
+        web = self.config.get()["web"]
+        if web["lan"]:
+            netaccess.firewall_ensure(web["port"])
+
     def restart_web(self, old_web=None):
         if self.web.restart():
             return
@@ -179,6 +188,7 @@ class Controller:
                 self.config.update({"web": {"port": p}})
                 if self.web.start():
                     break
+        threading.Thread(target=self.update_firewall, daemon=True).start()
         if open_browser:
             threading.Timer(1.0, self.open_dashboard).start()
         self.tray = Tray(self) if IS_WINDOWS and not self.service else None

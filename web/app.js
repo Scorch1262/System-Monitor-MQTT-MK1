@@ -198,6 +198,7 @@ function renderState(st) {
 function renderBanner(sens) {
   const b = $("banner");
   let html = "";
+  if (META && !META.can_edit) { b.classList.add("hidden"); return; }
   if (sens.windows && !sens.lhm_ok) {
     html = `<span><b>SENSOREN</b> &nbsp;LibreHardwareMonitor nicht aktiv (${esc(sens.lhm)}). Temperaturen und Lüfter fehlen ggf.; GPU-Werte über NVML, falls NVIDIA.</span>`;
   } else if (sens.windows && !sens.admin) {
@@ -262,7 +263,7 @@ function fillSettings() {
   $("p-enabled").checked = c.publish.enabled; $("p-base").value = c.publish.base_topic; $("p-int").value = c.publish.interval;
   $("p-json").checked = c.publish.json; $("p-jsub").value = c.publish.json_subtopic; $("p-single").checked = c.publish.single;
   $("p-status").value = c.publish.status_topic;
-  $("w-port").value = c.web.port; $("w-lan").checked = c.web.lan; $("s-open").checked = c.start.open_browser;
+  $("w-port").value = c.web.port; $("w-lan").checked = c.web.lan; $("w-remote").checked = !!c.web.remote_admin; $("s-open").checked = c.start.open_browser;
   $("w-driver").checked = !c.windows || c.windows.driver_auto !== false;
   $("u-auto").checked = !c.update || c.update.check !== false;
   updateBaseResult();
@@ -293,7 +294,7 @@ function collectSettings() {
     publish: { enabled: $("p-enabled").checked, base_topic: $("p-base").value.trim(), interval: +$("p-int").value || 5,
       json: $("p-json").checked, json_subtopic: $("p-jsub").value.trim(), single: $("p-single").checked, status_topic: $("p-status").value.trim() },
     metrics, dynamic, gpu_select: $("gpu-sel").value,
-    web: { port: +$("w-port").value || 8095, lan: $("w-lan").checked },
+    web: { port: +$("w-port").value || 8095, lan: $("w-lan").checked, remote_admin: $("w-remote").checked },
     start: { open_browser: $("s-open").checked },
     windows: { driver_auto: $("w-driver").checked },
     update: { check: $("u-auto").checked },
@@ -361,6 +362,30 @@ async function restartAdmin() {
 }
 window.restartAdmin = restartAdmin;
 
+/* ---------------------------------------------------------- Netzwerk */
+function renderUrls() {
+  const u = (META && META.urls) || [];
+  $("w-urls").innerHTML = u.length ? u.map((x) => `<a href="${esc(x)}">${esc(x)}</a>`).join("<br>") : "nur auf diesem PC (127.0.0.1)";
+}
+
+async function loadFirewall() {
+  if (!META || !META.windows) return;
+  const f = await api("/api/firewall").catch(() => null);
+  if (!f || !f.available) return;
+  const st = $("fw-state"), b = $("btn-fw");
+  if (!f.lan) { st.className = "msg"; st.textContent = "nicht nötig (Webseite nur auf diesem PC)"; b.classList.add("hidden"); return; }
+  if (f.port_ok) { st.className = "msg ok"; st.textContent = "Eingangsregel aktiv (lokales Netz)"; b.classList.add("hidden"); return; }
+  st.className = "msg err";
+  st.textContent = f.exists ? "Regel mit falschem Port" : "keine Regel – andere Geräte werden ggf. blockiert";
+  b.textContent = f.admin ? "Firewall freigeben" : "Firewall freigeben (Adminrechte)";
+  b.classList.remove("hidden");
+}
+
+function renderReadonlyHint() {
+  if (!META || META.can_edit) return "";
+  return `<span><b>NUR ANSICHT</b> &nbsp;Einstellungen können nur am PC selbst geändert werden (dort unter Programm → Bearbeiten freigeben).</span>`;
+}
+
 /* ---------------------------------------------------------- Update */
 function renderUpdateHint(st) {
   const u = st.update || {}, v = $("version"), b = $("update-banner");
@@ -368,7 +393,9 @@ function renderUpdateHint(st) {
   v.classList.toggle("new", !!u.available);
   v.onclick = u.available ? () => showView("settings") : null;
   let html = "";
-  if (u.busy) html = `<span><b>UPDATE</b> &nbsp;${esc(u.progress || "läuft")} … Das Programm startet danach automatisch neu.</span>`;
+  if (META && !META.can_edit) {
+    html = renderReadonlyHint() + (u.available ? `<span>Update ${esc(u.latest)} verfügbar</span>` : "");
+  } else if (u.busy) html = `<span><b>UPDATE</b> &nbsp;${esc(u.progress || "läuft")} … Das Programm startet danach automatisch neu.</span>`;
   else if (u.available) html = `<span><b>UPDATE</b> &nbsp;Version ${esc(u.latest)} ist verfügbar (installiert: v${esc(st.version)}).</span>` +
     `<span><button class="btn primary" onclick="installUpdate()">Jetzt aktualisieren</button> <button class="btn" onclick="showView('settings')">Details</button></span>`;
   if (b.dataset.html !== html) { b.innerHTML = html; b.dataset.html = html; }
@@ -415,7 +442,7 @@ function showView(v) {
   document.querySelectorAll(".view").forEach((s) => s.classList.toggle("hidden", s.id !== "view-" + v));
   history.replaceState(null, "", "#" + v);
   if (v === "sensors") loadRaw();
-  if (v === "settings") { loadPreview(); loadAutostart(); loadUpdate(); }
+  if (v === "settings") { loadPreview(); loadAutostart(); loadUpdate(); loadFirewall(); }
   if (v === "overview" && STATE) renderState(STATE);
 }
 
@@ -430,6 +457,10 @@ async function init() {
   $("btn-preview").onclick = loadPreview;
   $("btn-ucheck").onclick = async () => { $("u-msg").className = "msg"; $("u-msg").textContent = "prüfe …"; renderUpdate(await api("/api/update/check", {})); };
   $("btn-uinstall").onclick = installUpdate;
+  $("btn-fw").onclick = async () => {
+    const r = await api("/api/firewall", {}).catch((e) => ({ ok: false, message: e.message }));
+    toast(r.message, 6000); setTimeout(loadFirewall, 1500);
+  };
   $("u-auto").onchange = save;
   $("btn-admin").onclick = restartAdmin;
   $("btn-quit").onclick = async () => {
@@ -455,6 +486,9 @@ async function init() {
 
   [META, CONFIG] = await Promise.all([api("/api/meta"), api("/api/config")]);
   document.body.classList.toggle("linux", !META.windows);
+  document.body.classList.toggle("readonly", !META.can_edit);
+  if (!META.can_edit) document.querySelectorAll("#view-settings input, #view-settings select").forEach((e) => (e.disabled = true));
+  renderUrls();
   $("raw-source").textContent = (META.windows ? "Quelle: LibreHardwareMonitor" : "Quelle: Linux hwmon / thermal") + " · Topics bei aktivierten „Rohsensoren“";
   if (META.service && !META.windows) $("btn-quit").textContent = "Dienst neu starten";
   loadAutostart();

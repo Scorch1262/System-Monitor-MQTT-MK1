@@ -1,6 +1,6 @@
 # System-Monitor-MQTT-MK1
 
-**Version 1.2.0**
+**Version 1.3.0**
 
 Kleines Programm, das im Hintergrund läuft und die Systemauslastung regelmäßig an einen
 MQTT-Broker sendet. Eingestellt wird alles über eine Webseite im Dashboard-Design
@@ -80,9 +80,9 @@ Update: `git pull` im geklonten Ordner und `install.sh` erneut ausführen.
 **Variante C – offline per Zip** (Release-Datei `…-linux.zip` oder Repo-Zip; Brume 2: scp nur mit `-O`):
 
 ```
-scp -O System-Monitor-MQTT-MK1-v1.2.0-linux.zip root@192.168.8.1:/root/
+scp -O System-Monitor-MQTT-MK1-v1.3.0-linux.zip root@192.168.8.1:/root/
 ssh root@192.168.8.1
-cd /root && unzip -o System-Monitor-MQTT-MK1-v1.2.0-linux.zip
+cd /root && unzip -o System-Monitor-MQTT-MK1-v1.3.0-linux.zip
 sh System-Monitor-MQTT-MK1/install.sh
 ```
 
@@ -159,8 +159,21 @@ Unter OpenWrt braucht HTTPS die Stammzertifikate (`ca-bundle`, installiert `inst
 Ist der Ordner nicht beschreibbar, landen beide unter `%APPDATA%\System-Monitor-MQTT-MK1`.
 Das MQTT-Passwort steht im Klartext in der JSON-Datei.
 
-Der Webseiten-Port (Standard **8095**) ist auf der Webseite änderbar; optional ist die Seite
-im LAN erreichbar (dann kann jeder im Netz die Einstellungen ändern).
+## Zugriff aus dem Netzwerk
+
+Die Webseite ist auf allen Systemen für **alle im Netzwerk sichtbar**:
+`http://<IP-des-Rechners>:8095/` – die Adressen stehen unter *Einstellungen → Programm → Adressen*.
+Der Port (Standard **8095**) ist dort änderbar.
+
+| | Windows | Linux (Brume 2, Raspberry) |
+|---|---|---|
+| Ansehen aus dem Netz | ja | ja |
+| Einstellungen ändern aus dem Netz | nein (nur am PC selbst) – abschaltbar unter *Programm → Bearbeiten* | ja |
+| Firewall | Eingangsregel „System-Monitor-MQTT-MK1 Webseite“ (TCP-Port, nur lokales Subnetz) wird bei Adminrechten automatisch angelegt; sonst Button *Firewall freigeben* | OpenWrt: Regel durch `install.sh` |
+
+Andere Geräte ohne Bearbeitungsrecht sehen eine **Nur-Ansicht**: alle Werte, Sensoren, Topics und
+Einstellungen, aber keine Schaltflächen zum Ändern, Senden, Aktualisieren oder Beenden. Das
+MQTT-Passwort wird nie an den Browser übertragen (Anzeige `••••••••`).
 
 ## Build per GitHub Actions
 
@@ -191,6 +204,7 @@ app/mqtt_pub.py          MQTT-Versand, Nachrichtenaufbau, Wiederverbinden
 app/webserver.py         Webserver + API (http.server)
 app/autostart.py         Registry / Aufgabenplanung / Linux-Dienststatus
 app/updater.py           Update über GitHub-Releases
+app/netaccess.py         IP-Adressen, Nur-Ansicht-Prüfung, Windows-Firewall-Regel
 install.sh, uninstall.sh Linux-Installation (procd bzw. systemd)
 web/                     Oberfläche (HTML/CSS/JS)
 lhm/LhmDeps.csproj       holt LibreHardwareMonitorLib + Abhängigkeiten
@@ -198,6 +212,12 @@ System-Monitor-MQTT-MK1.spec   PyInstaller-Spezifikation
 ```
 
 ## Änderungen
+
+### 1.3.0
+- Webseite auch unter Windows standardmäßig für alle im Netzwerk sichtbar (bestehende Einstellungen werden umgestellt)
+- Windows-Firewall-Regel für den Webport (nur lokales Subnetz) automatisch bei Adminrechten bzw. per Button
+- Nur-Ansicht für andere Geräte; Bearbeiten aus dem Netz einstellbar (Windows: aus, Linux: an)
+- Anzeige der Netzwerkadressen der Webseite, MQTT-Passwort wird nicht mehr an den Browser gesendet
 
 ### 1.2.0
 - Update-Funktion: neues Release im GitHub-Repo erkennen und per Knopfdruck installieren (Windows: exe-Tausch, Linux: Programmdateien ersetzen), automatischer Neustart

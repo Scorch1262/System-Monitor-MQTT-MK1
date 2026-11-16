@@ -77,7 +77,9 @@ DEFAULTS = {
                 "disks": True, "raw": False},
     "gpu_select": "auto",
     # Unter Linux (Brume 2, Raspberry) läuft das Programm ohne Bildschirm -> Webseite im LAN
-    "web": {"port": 8095, "lan": not sys.platform.startswith("win")},
+    # Webseite für alle im Netzwerk sichtbar. Einstellungen ändern: unter Windows standardmäßig
+    # nur am PC selbst, unter Linux (ohne Bildschirm) auch aus dem Netzwerk.
+    "web": {"port": 8095, "lan": True, "remote_admin": not sys.platform.startswith("win")},
     "start": {"open_browser": False},
     "windows": {"driver_auto": True},
     "update": {"check": True, "repo": "Scorch1262/System-Monitor-MQTT-MK1"},
@@ -151,13 +153,19 @@ class Config:
         if not self.is_new:
             try:
                 with open(self.path, "r", encoding="utf-8") as f:
-                    self.data = _merge(DEFAULTS, json.load(f))
+                    loaded = json.load(f)
+                self.data = _merge(DEFAULTS, loaded)
+                if int(loaded.get("schema", 1)) < 2:
+                    # ab v1.3.0: Webseite standardmäßig im ganzen Netzwerk sichtbar
+                    self.data["web"]["lan"] = True
+                    log.info("Konfiguration auf Schema 2 umgestellt: Webseite im Netzwerk sichtbar")
             except Exception as e:  # defekte Datei -> Sicherung anlegen, Standardwerte nutzen
                 log.error("Konfiguration nicht lesbar (%s) - Standardwerte werden genutzt", e)
                 try:
                     os.replace(self.path, self.path + ".defekt")
                 except OSError:
                     pass
+        self.data["schema"] = 2
         self.save()
 
     def get(self):

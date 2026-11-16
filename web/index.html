@@ -126,8 +126,8 @@
         </div>
         <div class="msg err" id="mq-err" style="margin-top:8px"></div>
         <div class="actions">
-          <button class="btn teal" id="btn-send">Jetzt senden</button>
-          <button class="btn" id="btn-pause">Pausieren</button>
+          <button class="btn teal edit-only" id="btn-send">Jetzt senden</button>
+          <button class="btn edit-only" id="btn-pause">Pausieren</button>
         </div>
       </div>
     </div>
@@ -170,7 +170,7 @@
           <select id="m-qos"><option value="0">0 – höchstens einmal</option><option value="1">1 – mindestens einmal</option><option value="2">2 – genau einmal</option></select>
           <label>Retain</label><label class="check"><input type="checkbox" id="m-retain">Werte auf dem Broker behalten (retain)</label>
         </div>
-        <div class="actions">
+        <div class="actions edit-only">
           <button class="btn primary" data-save>Speichern</button>
           <button class="btn teal" id="btn-test">Verbindung testen</button>
           <span class="msg" id="test-msg"></span>
@@ -191,7 +191,7 @@
           <span class="hint">online/offline (retained, Last Will)</span>
         </div>
         <div class="actions">
-          <button class="btn primary" data-save>Speichern</button>
+          <button class="btn primary edit-only" data-save>Speichern</button>
           <button class="btn" id="btn-preview">Vorschau aktualisieren</button>
           <span class="msg" id="preview-info"></span>
         </div>
@@ -208,7 +208,7 @@
         <div class="form" style="margin-top:8px">
           <label for="gpu-sel">GPU für „gpu/…“</label><select id="gpu-sel"></select>
         </div>
-        <div class="actions">
+        <div class="actions edit-only">
           <button class="btn" id="btn-all">Alle</button>
           <button class="btn" id="btn-none">Keine</button>
           <button class="btn primary" data-save>Speichern</button>
@@ -229,7 +229,7 @@
         <div class="form" style="margin-top:10px">
           <label>Automatisch</label><label class="check"><input type="checkbox" id="u-auto">alle 6 Stunden nach Updates suchen</label>
         </div>
-        <div class="actions">
+        <div class="actions edit-only">
           <button class="btn" id="btn-ucheck">Nach Updates suchen</button>
           <button class="btn primary" id="btn-uinstall" disabled>Jetzt aktualisieren</button>
         </div>
@@ -239,7 +239,14 @@
         <div class="tile-head"><span class="tile-title">PROGRAMM</span></div>
         <div class="form">
           <label for="w-port">Webseiten-Port</label><input type="number" id="w-port" min="1" max="65535">
-          <label>Netzwerk</label><label class="check"><input type="checkbox" id="w-lan">Webseite im LAN erreichbar (sonst nur dieser PC)</label>
+          <label>Netzwerk</label><label class="check"><input type="checkbox" id="w-lan">Webseite für alle im Netzwerk sichtbar (sonst nur dieser PC)</label>
+          <label>Bearbeiten</label><label class="check"><input type="checkbox" id="w-remote">Einstellungen auch von anderen Geräten im Netzwerk ändern</label>
+          <label>Adressen</label><span class="msg" id="w-urls" style="word-break:break-all">–</span>
+          <label class="win-only">Firewall</label>
+          <span class="win-only" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <span class="msg" id="fw-state">–</span>
+            <button class="btn edit-only hidden" id="btn-fw">Firewall freigeben</button>
+          </span>
           <label class="win-only">Start</label><label class="check win-only"><input type="checkbox" id="s-open">Dashboard beim Programmstart öffnen</label>
           <label class="win-only">Sensortreiber</label><label class="check win-only"><input type="checkbox" id="w-driver">PawnIO automatisch installieren (bei Adminrechten)</label>
           <label for="a-mode">Autostart</label>
@@ -252,7 +259,7 @@
           <span class="hint win-only" id="a-hint"></span>
           <label>Konfiguration</label><span class="msg" id="cfg-path" style="word-break:break-all"></span>
         </div>
-        <div class="actions">
+        <div class="actions edit-only">
           <button class="btn primary" data-save>Speichern</button>
           <button class="btn win-only" id="btn-admin">Als Administrator neu starten</button>
           <button class="btn danger" id="btn-quit">Programm beenden</button>
