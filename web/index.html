@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>System-Monitor MQTT MK1</title>
+<link rel="icon" href="/favicon.ico">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <svg class="logo" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.6">
+      <rect x="8" y="8" width="16" height="16" rx="2"/>
+      <rect x="12" y="12" width="8" height="8" rx="1" fill="currentColor" fill-opacity=".25"/>
+      <path d="M12 4v4M16 4v4M20 4v4M12 24v4M16 24v4M20 24v4M4 12h4M4 16h4M4 20h4M24 12h4M24 16h4M24 20h4"/>
+    </svg>
+    <div>
+      <div class="title">SYSTEM<span class="accent">//</span>MONITOR</div>
+      <div class="subtitle">MQTT-Telemetrie · <span id="host">–</span></div>
+    </div>
+  </div>
+  <nav class="tabs">
+    <button data-view="overview" class="active">ÜBERSICHT</button>
+    <button data-view="sensors">SENSOREN</button>
+    <button data-view="settings">EINSTELLUNGEN</button>
+  </nav>
+  <div class="top-right">
+    <span class="pill" id="pill-mqtt" title="MQTT-Verbindung"><i></i><span>MQTT</span></span>
+    <span class="pill" id="pill-hw" title="Hardware-Sensoren"><i></i><span>SENSOREN</span></span>
+    <span class="pill" id="pill-admin" title="Adminrechte"><i></i><span>ADMIN</span></span>
+    <span class="version" id="version">v–</span>
+  </div>
+</header>
+
+<main>
+  <div id="banner" class="banner hidden"></div>
+
+  <!-- ===================== ÜBERSICHT ===================== -->
+  <section id="view-overview" class="view">
+    <div class="grid">
+      <div class="tile">
+        <div class="tile-head"><span class="tile-title">CPU</span><span class="tile-sub" id="cpu-name">–</span></div>
+        <div class="tile-main">
+          <div class="gauge" id="g-cpu"></div>
+          <div class="kv">
+            <span class="k">Temperatur</span><span class="v" id="cpu-temp">–</span>
+            <span class="k">Takt</span><span class="v" id="cpu-clock">–</span>
+            <span class="k">Leistung</span><span class="v" id="cpu-power">–</span>
+            <span class="k">Prozesse</span><span class="v" id="sys-proc">–</span>
+          </div>
+        </div>
+        <div class="cores" id="cpu-cores"></div>
+        <canvas class="spark" id="sp-cpu"></canvas>
+        <div class="legend"><span class="t">AUSLASTUNG</span><span class="a">TEMPERATUR</span></div>
+      </div>
+
+      <div class="tile">
+        <div class="tile-head"><span class="tile-title">GPU</span><span class="tile-sub" id="gpu-name">–</span></div>
+        <div class="tile-main">
+          <div class="gauge" id="g-gpu"></div>
+          <div class="kv">
+            <span class="k">Temperatur</span><span class="v" id="gpu-temp">–</span>
+            <span class="k">Hotspot</span><span class="v" id="gpu-hot">–</span>
+            <span class="k">Speicher</span><span class="v" id="gpu-mem">–</span>
+            <span class="k">Lüfter</span><span class="v" id="gpu-fan">–</span>
+            <span class="k">Lüfter-PWM</span><span class="v" id="gpu-fanp">–</span>
+            <span class="k">Leistung</span><span class="v" id="gpu-power">–</span>
+            <span class="k">Takt</span><span class="v" id="gpu-clock">–</span>
+          </div>
+        </div>
+        <canvas class="spark" id="sp-gpu"></canvas>
+        <div class="legend"><span class="t">AUSLASTUNG</span><span class="a">TEMPERATUR</span></div>
+      </div>
+
+      <div class="tile">
+        <div class="tile-head"><span class="tile-title">ARBEITSSPEICHER</span><span class="tile-sub" id="ram-total">–</span></div>
+        <div class="tile-main">
+          <div class="gauge" id="g-ram"></div>
+          <div class="kv">
+            <span class="k">Belegt</span><span class="v" id="ram-used">–</span>
+            <span class="k">Verfügbar</span><span class="v" id="ram-avail">–</span>
+            <span class="k">Auslagerung</span><span class="v" id="swap">–</span>
+            <span class="k">Laufzeit</span><span class="v" id="uptime">–</span>
+            <span class="k">Akku</span><span class="v" id="battery">–</span>
+          </div>
+        </div>
+        <canvas class="spark" id="sp-ram"></canvas>
+        <div class="legend"><span class="t">AUSLASTUNG</span></div>
+      </div>
+
+      <div class="tile">
+        <div class="tile-head"><span class="tile-title">LÜFTER</span><span class="tile-sub">U/min</span></div>
+        <div class="list" id="fans"></div>
+      </div>
+
+      <div class="tile">
+        <div class="tile-head"><span class="tile-title">TEMPERATUREN</span><span class="tile-sub">Mainboard · Laufwerke</span></div>
+        <div class="list" id="temps"></div>
+      </div>
+
+      <div class="tile">
+        <div class="tile-head"><span class="tile-title">LAUFWERKE</span><span class="tile-sub" id="disk-io">–</span></div>
+        <div class="list" id="disks"></div>
+      </div>
+
+      <div class="tile">
+        <div class="tile-head"><span class="tile-title">NETZWERK</span><span class="tile-sub" id="net-now">–</span></div>
+        <div class="kv">
+          <span class="k">Upload</span><span class="v" id="net-up">–</span>
+          <span class="k">Download</span><span class="v" id="net-down">–</span>
+        </div>
+        <canvas class="spark" id="sp-net"></canvas>
+        <div class="legend"><span class="t">DOWNLOAD</span><span class="a">UPLOAD</span></div>
+      </div>
+
+      <div class="tile">
+        <div class="tile-head"><span class="tile-title">MQTT</span><span class="tile-sub" id="mq-broker">–</span></div>
+        <div class="kv">
+          <span class="k">Status</span><span class="v" id="mq-state">–</span>
+          <span class="k">Topic</span><span class="v" id="mq-topic">–</span>
+          <span class="k">Intervall</span><span class="v" id="mq-int">–</span>
+          <span class="k">Letzter Versand</span><span class="v" id="mq-last">–</span>
+          <span class="k">Nachrichten</span><span class="v" id="mq-count">–</span>
+        </div>
+        <div class="msg err" id="mq-err" style="margin-top:8px"></div>
+        <div class="actions">
+          <button class="btn teal" id="btn-send">Jetzt senden</button>
+          <button class="btn" id="btn-pause">Pausieren</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== SENSOREN ===================== -->
+  <section id="view-sensors" class="view hidden">
+    <div class="tile">
+      <div class="tile-head"><span class="tile-title">ALLE HARDWARE-SENSOREN</span><span class="tile-sub" id="raw-count">–</span></div>
+      <div class="toolbar">
+        <input type="text" id="raw-filter" placeholder="Filter (z. B. Fan, Temperature, GPU)" style="max-width:360px">
+        <span class="msg">Quelle: LibreHardwareMonitor · Topics bei aktivierten „Rohsensoren“</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Hardware</th><th>Sensor</th><th>Typ</th><th style="text-align:right">Wert</th><th>Topic (Rohsensor)</th></tr></thead>
+          <tbody id="raw-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== EINSTELLUNGEN ===================== -->
+  <section id="view-settings" class="view hidden">
+    <div class="settings">
+      <div class="tile">
+        <div class="tile-head"><span class="tile-title">MQTT-BROKER</span></div>
+        <div class="form">
+          <label for="m-host">Broker (Host/IP)</label><input type="text" id="m-host" placeholder="192.168.200.10">
+          <label for="m-port">Port</label><input type="number" id="m-port" min="1" max="65535">
+          <label for="m-user">Benutzer</label><input type="text" id="m-user" autocomplete="off">
+          <label for="m-pass">Passwort</label><input type="password" id="m-pass" autocomplete="new-password">
+          <label for="m-cid">Client-ID</label><input type="text" id="m-cid" placeholder="automatisch">
+          <label>TLS</label>
+          <div style="display:flex;gap:16px;flex-wrap:wrap">
+            <label class="check"><input type="checkbox" id="m-tls">verschlüsselt (TLS)</label>
+            <label class="check"><input type="checkbox" id="m-insecure">Zertifikat nicht prüfen</label>
+          </div>
+          <label for="m-qos">QoS</label>
+          <select id="m-qos"><option value="0">0 – höchstens einmal</option><option value="1">1 – mindestens einmal</option><option value="2">2 – genau einmal</option></select>
+          <label>Retain</label><label class="check"><input type="checkbox" id="m-retain">Werte auf dem Broker behalten (retain)</label>
+        </div>
+        <div class="actions">
+          <button class="btn primary" data-save>Speichern</button>
+          <button class="btn teal" id="btn-test">Verbindung testen</button>
+          <span class="msg" id="test-msg"></span>
+        </div>
+      </div>
+
+      <div class="tile">
+        <div class="tile-head"><span class="tile-title">TOPIC &amp; VERSAND</span></div>
+        <div class="form">
+          <label>Senden</label><label class="check"><input type="checkbox" id="p-enabled">Messwerte senden</label>
+          <label for="p-base">Basis-Topic</label><input type="text" id="p-base">
+          <span class="hint">Platzhalter: {hostname} · ergibt z. B. <span id="p-base-res" style="color:var(--teal)"></span></span>
+          <label for="p-int">Intervall (s)</label><input type="number" id="p-int" min="1" max="3600" step="1">
+          <label>JSON</label><label class="check"><input type="checkbox" id="p-json">alle Werte als JSON senden</label>
+          <label for="p-jsub">JSON-Untertopic</label><input type="text" id="p-jsub" placeholder="leer = direkt auf Basis-Topic">
+          <label>Einzelwerte</label><label class="check"><input type="checkbox" id="p-single">jeden Wert auf eigenem Topic senden</label>
+          <label for="p-status">Status-Topic</label><input type="text" id="p-status" placeholder="leer = kein Status">
+          <span class="hint">online/offline (retained, Last Will)</span>
+        </div>
+        <div class="actions">
+          <button class="btn primary" data-save>Speichern</button>
+          <button class="btn" id="btn-preview">Vorschau aktualisieren</button>
+          <span class="msg" id="preview-info"></span>
+        </div>
+        <div class="preview" id="preview" style="margin-top:10px"></div>
+      </div>
+
+      <div class="tile">
+        <div class="tile-head"><span class="tile-title">MESSWERTE</span></div>
+        <div id="metric-list"></div>
+        <div class="metric-group">
+          <h4>Dynamische Gruppen</h4>
+          <div class="metric-grid" id="dyn-list"></div>
+        </div>
+        <div class="form" style="margin-top:8px">
+          <label for="gpu-sel">GPU für „gpu/…“</label><select id="gpu-sel"></select>
+        </div>
+        <div class="actions">
+          <button class="btn" id="btn-all">Alle</button>
+          <button class="btn" id="btn-none">Keine</button>
+          <button class="btn primary" data-save>Speichern</button>
+        </div>
+      </div>
+
+      <div class="tile">
+        <div class="tile-head"><span class="tile-title">PROGRAMM</span></div>
+        <div class="form">
+          <label for="w-port">Webseiten-Port</label><input type="number" id="w-port" min="1" max="65535">
+          <label>Netzwerk</label><label class="check"><input type="checkbox" id="w-lan">Webseite im LAN erreichbar (sonst nur dieser PC)</label>
+          <label>Start</label><label class="check"><input type="checkbox" id="s-open">Dashboard beim Programmstart öffnen</label>
+          <label for="a-mode">Autostart</label>
+          <select id="a-mode">
+            <option value="off">Aus</option>
+            <option value="user">Mit Windows starten (normal)</option>
+            <option value="admin">Mit Windows starten (Adminrechte – alle Sensoren)</option>
+          </select>
+          <span class="hint" id="a-hint"></span>
+          <label>Konfiguration</label><span class="msg" id="cfg-path" style="word-break:break-all"></span>
+        </div>
+        <div class="actions">
+          <button class="btn primary" data-save>Speichern</button>
+          <button class="btn" id="btn-admin">Als Administrator neu starten</button>
+          <button class="btn danger" id="btn-quit">Programm beenden</button>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="toast hidden" id="toast"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>

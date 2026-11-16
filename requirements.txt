@@ -1,0 +1,7 @@
+flask>=3.0
+paho-mqtt>=2.0
+psutil>=5.9
+pystray>=0.19
+pillow>=10.0
+nvidia-ml-py>=12.535
+pythonnet>=3.0.3; sys_platform == "win32"

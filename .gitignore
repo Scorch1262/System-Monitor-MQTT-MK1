@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+build/
+dist/
+release/
+lhm_out/
+lhm/bin/
+lhm/obj/
+*.log
+System-Monitor-MQTT-MK1.json
