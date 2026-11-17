@@ -341,6 +341,11 @@ async function loadAutostart() {
   sel.dataset.current = sel.value;
   $("a-hint").textContent = !a.available ? "Nur unter Windows verfügbar" :
     a.admin ? "Adminrechte vorhanden – alle Modi möglich" : "Für „Adminrechte“ zuerst als Administrator neu starten";
+  const probs = a.problems || [];
+  $("a-detail").innerHTML = (a.info ? `<span class="msg">${esc(a.info)}</span>` : "") +
+    probs.map((p) => `<br><span class="msg err">⚠ ${esc(p)}</span>`).join("") +
+    (a.mode !== "off" && !probs.length && a.available ? `<br><span class="msg ok">Eintrag in Ordnung</span>` : "");
+  $("btn-areset").classList.toggle("hidden", !a.available || a.mode === "off");
 }
 
 async function setAutostart() {
@@ -348,7 +353,8 @@ async function setAutostart() {
   try {
     const r = await api("/api/autostart", { mode: sel.value });
     sel.dataset.current = r.mode;
-    toast("Autostart: " + sel.options[sel.selectedIndex].text);
+    toast("Autostart: " + sel.options[sel.selectedIndex].text + " – eingerichtet");
+    loadAutostart();
   } catch (e) {
     toast("Autostart: " + e.message, 6000);
     sel.value = sel.dataset.current || "off";
@@ -457,6 +463,14 @@ async function init() {
   $("btn-preview").onclick = loadPreview;
   $("btn-ucheck").onclick = async () => { $("u-msg").className = "msg"; $("u-msg").textContent = "prüfe …"; renderUpdate(await api("/api/update/check", {})); };
   $("btn-uinstall").onclick = installUpdate;
+  $("btn-areset").onclick = async () => {
+    const sel = $("a-mode");
+    if (sel.value === "admin" && AUTOSTART && !AUTOSTART.admin) {
+      if (confirm("Die Aufgabe mit Adminrechten kann nur mit Adminrechten neu eingerichtet werden. Jetzt als Administrator neu starten?")) restartAdmin();
+      return;
+    }
+    await setAutostart(); loadAutostart();
+  };
   $("btn-fw").onclick = async () => {
     const r = await api("/api/firewall", {}).catch((e) => ({ ok: false, message: e.message }));
     toast(r.message, 6000); setTimeout(loadFirewall, 1500);

@@ -257,10 +257,13 @@
             <option value="admin">Mit Windows starten (Adminrechte – alle Sensoren)</option>
           </select>
           <span class="hint win-only" id="a-hint"></span>
+          <span class="win-only"></span>
+          <span class="win-only" id="a-detail" style="font-size:11px"></span>
           <label>Konfiguration</label><span class="msg" id="cfg-path" style="word-break:break-all"></span>
         </div>
         <div class="actions edit-only">
           <button class="btn primary" data-save>Speichern</button>
+          <button class="btn win-only" id="btn-areset">Autostart neu einrichten</button>
           <button class="btn win-only" id="btn-admin">Als Administrator neu starten</button>
           <button class="btn danger" id="btn-quit">Programm beenden</button>
         </div>

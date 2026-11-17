@@ -189,6 +189,8 @@ class Controller:
                 if self.web.start():
                     break
         threading.Thread(target=self.update_firewall, daemon=True).start()
+        from app import autostart
+        threading.Thread(target=autostart.repair, daemon=True).start()
         if open_browser:
             threading.Timer(1.0, self.open_dashboard).start()
         self.tray = Tray(self) if IS_WINDOWS and not self.service else None
@@ -281,7 +283,8 @@ def main():
         return
 
     setup_logging()
-    log.info("%s %s startet", APP_TITLE, VERSION)
+    log.info("%s %s startet (%s)%s", APP_TITLE, VERSION, sys.executable,
+             " durch Autostart" if args.autostart else "")
 
     instance = SingleInstance()
     if args.updated:
@@ -301,4 +304,9 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception:
+        # Ohne Konsolenfenster wäre ein Absturz sonst unsichtbar (z. B. beim Autostart)
+        log.exception("Programm abgestürzt")
+        raise

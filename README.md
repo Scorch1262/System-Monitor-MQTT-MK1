@@ -1,6 +1,6 @@
 # System-Monitor-MQTT-MK1
 
-**Version 1.4.1**
+**Version 1.4.2**
 
 Kleines Programm, das im Hintergrund läuft und die Systemauslastung regelmäßig an einen
 MQTT-Broker sendet. Eingestellt wird alles über eine Webseite im Dashboard-Design
@@ -80,9 +80,9 @@ Update: `git pull` im geklonten Ordner und `install.sh` erneut ausführen.
 **Variante C – offline per Zip** (Release-Datei `…-linux.zip` oder Repo-Zip; Brume 2: scp nur mit `-O`):
 
 ```
-scp -O System-Monitor-MQTT-MK1-v1.4.1-linux.zip root@192.168.8.1:/root/
+scp -O System-Monitor-MQTT-MK1-v1.4.2-linux.zip root@192.168.8.1:/root/
 ssh root@192.168.8.1
-cd /root && unzip -o System-Monitor-MQTT-MK1-v1.4.1-linux.zip
+cd /root && unzip -o System-Monitor-MQTT-MK1-v1.4.2-linux.zip
 sh System-Monitor-MQTT-MK1/install.sh
 ```
 
@@ -133,6 +133,13 @@ Bei Notebooks liefert nicht jeder Hersteller Lüfterdrehzahlen an Windows.
 | Aus | – | – |
 | Normal | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` | ohne CPU-Temperatur/Lüfter |
 | Adminrechte | Aufgabenplanung „System-Monitor-MQTT-MK1“, höchste Rechte, läuft auch im Akkubetrieb | alle |
+
+Unter *Einstellungen → Programm* zeigt das Programm, worauf der Autostart zeigt, wann die Aufgabe
+zuletzt gestartet wurde und mit welchem Ergebnis. Zeigt der Eintrag auf eine andere exe (z. B. nach
+dem Umzug in einen anderen Ordner), korrigiert das Programm ihn beim nächsten Start selbst – bzw.
+per **„Autostart neu einrichten“**. Ein im Task-Manager (Reiter *Autostart*) deaktivierter Eintrag
+wird dabei wieder aktiviert. Jeder Start und jeder Absturz steht in `System-Monitor-MQTT-MK1.log`
+(„… startet (… ) durch Autostart“).
 
 ## Update per Knopfdruck
 
@@ -244,6 +251,12 @@ System-Monitor-MQTT-MK1.spec   PyInstaller-Spezifikation
 ```
 
 ## Änderungen
+
+### 1.4.2
+- Autostart: Prüfung, ob Registry-Eintrag bzw. Aufgabe auf die aktuelle exe zeigt (nach Umzug auf den Ordner-Build zeigten alte Einträge ins Leere) – automatische Korrektur beim Start und Button „Autostart neu einrichten“
+- Anzeige von letztem Start und Ergebnis der Aufgabe, Erkennung „im Task-Manager deaktiviert“ (wird beim Einrichten wieder aktiviert)
+- Benutzer der Aufgabe über `whoami` (zuverlässiger bei Microsoft-Konten)
+- Start durch Autostart und Abstürze werden protokolliert
 
 ### 1.4.1
 - Fix „Failed to resolve Python.Runtime.Loader.Initialize“: DLLs mit Windows-Internet-Markierung (Zip im Explorer entpackt) werden jetzt geladen – eigene .NET-AppDomain mit `loadFromRemoteSources`, zusätzlich Entfernen der Markierung, wo Schreibrecht besteht
