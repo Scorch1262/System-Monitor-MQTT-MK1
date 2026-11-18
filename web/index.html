@@ -40,7 +40,7 @@
   <!-- ===================== ÜBERSICHT ===================== -->
   <section id="view-overview" class="view">
     <div class="grid">
-      <div class="tile">
+      <div class="tile" id="tile-cpu" data-auto>
         <div class="tile-head"><span class="tile-title">CPU</span><span class="tile-sub" id="cpu-name">–</span></div>
         <div class="tile-main">
           <div class="gauge" id="g-cpu"></div>
@@ -56,7 +56,7 @@
         <div class="legend"><span class="t">AUSLASTUNG</span><span class="a">TEMPERATUR</span></div>
       </div>
 
-      <div class="tile" id="tile-gpu">
+      <div class="tile" id="tile-gpu" data-auto>
         <div class="tile-head"><span class="tile-title">GPU</span><span class="tile-sub" id="gpu-name">–</span></div>
         <div class="tile-main">
           <div class="gauge" id="g-gpu"></div>
@@ -74,7 +74,7 @@
         <div class="legend"><span class="t">AUSLASTUNG</span><span class="a">TEMPERATUR</span></div>
       </div>
 
-      <div class="tile">
+      <div class="tile" id="tile-ram" data-auto>
         <div class="tile-head"><span class="tile-title">ARBEITSSPEICHER</span><span class="tile-sub" id="ram-total">–</span></div>
         <div class="tile-main">
           <div class="gauge" id="g-ram"></div>
@@ -90,22 +90,22 @@
         <div class="legend"><span class="t">AUSLASTUNG</span></div>
       </div>
 
-      <div class="tile">
+      <div class="tile" id="tile-fans">
         <div class="tile-head"><span class="tile-title">LÜFTER</span><span class="tile-sub">U/min</span></div>
         <div class="list" id="fans"></div>
       </div>
 
-      <div class="tile">
+      <div class="tile" id="tile-temps">
         <div class="tile-head"><span class="tile-title">TEMPERATUREN</span><span class="tile-sub">Mainboard · Laufwerke</span></div>
         <div class="list" id="temps"></div>
       </div>
 
-      <div class="tile">
+      <div class="tile" id="tile-disks">
         <div class="tile-head"><span class="tile-title">LAUFWERKE</span><span class="tile-sub" id="disk-io">–</span></div>
         <div class="list" id="disks"></div>
       </div>
 
-      <div class="tile">
+      <div class="tile" id="tile-net" data-auto>
         <div class="tile-head"><span class="tile-title">NETZWERK</span><span class="tile-sub" id="net-now">–</span></div>
         <div class="kv">
           <span class="k">Upload</span><span class="v" id="net-up">–</span>

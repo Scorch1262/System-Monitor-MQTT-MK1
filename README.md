@@ -1,6 +1,6 @@
 # System-Monitor-MQTT-MK1
 
-**Version 1.4.2**
+**Version 1.4.3**
 
 Kleines Programm, das im Hintergrund läuft und die Systemauslastung regelmäßig an einen
 MQTT-Broker sendet. Eingestellt wird alles über eine Webseite im Dashboard-Design
@@ -80,9 +80,9 @@ Update: `git pull` im geklonten Ordner und `install.sh` erneut ausführen.
 **Variante C – offline per Zip** (Release-Datei `…-linux.zip` oder Repo-Zip; Brume 2: scp nur mit `-O`):
 
 ```
-scp -O System-Monitor-MQTT-MK1-v1.4.2-linux.zip root@192.168.8.1:/root/
+scp -O System-Monitor-MQTT-MK1-v1.4.3-linux.zip root@192.168.8.1:/root/
 ssh root@192.168.8.1
-cd /root && unzip -o System-Monitor-MQTT-MK1-v1.4.2-linux.zip
+cd /root && unzip -o System-Monitor-MQTT-MK1-v1.4.3-linux.zip
 sh System-Monitor-MQTT-MK1/install.sh
 ```
 
@@ -251,6 +251,10 @@ System-Monitor-MQTT-MK1.spec   PyInstaller-Spezifikation
 ```
 
 ## Änderungen
+
+### 1.4.3
+- Übersicht zeigt nur vorhandene Kategorien: Kacheln für GPU, Lüfter, Temperaturen, Laufwerke und Netzwerk erscheinen nur, wenn es dafür Werte gibt
+- Einzelne Zeilen (z. B. CPU-Temperatur, Leistung, Hotspot, Akku, Auslagerung) erscheinen erst, sobald das Gerät einen Wert liefert
 
 ### 1.4.2
 - Autostart: Prüfung, ob Registry-Eintrag bzw. Aufgabe auf die aktuelle exe zeigt (nach Umzug auf den Ordner-Build zeigten alte Einträge ins Leere) – automatische Korrektur beim Start und Button „Autostart neu einrichten“

@@ -10,7 +10,19 @@ function num(v, d = 1) {
 }
 function fmt(v, unit, d = 1) { const n = num(v, d); return n === null ? "–" : unit ? `${n} ${unit}` : n; }
 function tempClass(v) { return v == null ? "" : v >= 85 ? "crit" : v >= 70 ? "hot" : ""; }
-function setV(id, text, cls = "") { const el = $(id); el.textContent = text; el.className = "v " + cls; }
+const SEEN = new Set();
+/* Wert setzen. In Hardware-Kacheln (data-auto) bleibt eine Zeile ausgeblendet, bis einmal ein Wert kam –
+   so erscheinen nur Messwerte, die es auf diesem Gerät auch gibt. */
+function setV(id, text, cls = "") {
+  const el = $(id);
+  el.textContent = text;
+  el.className = "v " + cls;
+  if (!el.closest(".tile[data-auto]")) return;
+  if (text && text !== "–") SEEN.add(id);
+  const show = SEEN.has(id);
+  el.classList.toggle("hidden", !show);
+  if (el.previousElementSibling) el.previousElementSibling.classList.toggle("hidden", !show);
+}
 function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
 function slug(t) {
   t = String(t).trim().toLowerCase().replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss").replace(/#/g, "");
@@ -125,6 +137,7 @@ function renderState(st) {
   setV("cpu-power", fmt(cpu.power, "W"));
   setV("sys-proc", fmt(s.system.processes, "", 0));
   const cores = cpu.cores || [], ce = $("cpu-cores");
+  ce.classList.toggle("hidden", cores.length < 2);
   if (ce.children.length !== cores.length) ce.innerHTML = cores.map(() => "<div><i></i></div>").join("");
   cores.forEach((v, i) => { const b = ce.children[i]; b.firstChild.style.height = (v || 0) + "%"; b.title = `Kern ${i + 1}: ${fmt(v, "%")}`; });
 
@@ -154,11 +167,13 @@ function renderState(st) {
   // Lüfter
   const fans = s.fans || [];
   fans.forEach((f) => { if (f.rpm > fanMax) fanMax = f.rpm; });
+  $("tile-fans").classList.toggle("hidden", !fans.length);
   $("fans").innerHTML = fans.length ? fans.map((f) => barRow(f.name, fmt(f.rpm, "U/min", 0), f.rpm / fanMax * 100)).join("")
     : `<div class="empty">${sens.windows ? (sens.admin ? "Keine Lüftersensoren gefunden – bei Notebooks liefert der Hersteller oft keine Drehzahl" : "Lüfter-Drehzahlen: „Alle Sensoren aktivieren“ (Adminrechte)") : "Keine Lüftersensoren gefunden (z. B. Raspberry Pi ohne Lüfter)"}</div>`;
 
   // Temperaturen
   const temps = [...(s.temps_board || []).map((t) => ({ ...t, g: "" })), ...(s.temps_drives || []).map((t) => ({ ...t, g: "▣ " }))];
+  $("tile-temps").classList.toggle("hidden", !temps.length);
   $("temps").innerHTML = temps.length ? temps.map((t) => {
     const c = t.value >= 85 ? "crit" : t.value >= 65 ? "warm" : "";
     return barRow(t.g + t.name, fmt(t.value, "°C"), t.value, c);
@@ -166,6 +181,7 @@ function renderState(st) {
 
   // Laufwerke
   $("disk-io").textContent = `▲ ${fmt(s.disk_io.write, "MB/s")}  ▼ ${fmt(s.disk_io.read, "MB/s")}`;
+  $("tile-disks").classList.toggle("hidden", !(s.disks && s.disks.length));
   $("disks").innerHTML = (s.disks || []).map((d) => {
     const c = d.usage >= 95 ? "crit" : d.usage >= 85 ? "warm" : "";
     return barRow(d.name, `${fmt(d.free_gb, "GB", 0)} frei`, d.usage, c);
@@ -185,6 +201,11 @@ function renderState(st) {
   setV("mq-count", mq.last_publish ? `${mq.last_count} (gesamt ${mq.sent_total.toLocaleString("de-DE")})` : "–");
   $("mq-err").textContent = mq.last_error || "";
   $("btn-pause").textContent = mq.paused ? "Fortsetzen" : "Pausieren";
+
+  // Netzwerk-Kachel erst zeigen, wenn Werte da sind; Legende "Temperatur" nur mit Temperaturwerten
+  $("tile-net").classList.toggle("hidden", !SEEN.has("net-up") && !SEEN.has("net-down"));
+  document.querySelector("#tile-cpu .legend .a").classList.toggle("hidden", !SEEN.has("cpu-temp"));
+  document.querySelector("#tile-gpu .legend .a").classList.toggle("hidden", !SEEN.has("gpu-temp"));
 
   // Verläufe
   const h = st.history || {};
